@@ -132,16 +132,16 @@ func main() {
 
 	log.Printf("[Anime Downloader] Shutting down server gracefully...")
 
-	// Stop downloader pool
-	workerPool.Stop()
-
-	// Shutdown HTTP server
+	// 1. Shutdown HTTP server first so no new requests are accepted
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
 	}
+
+	// 2. Now safely stop downloader pool
+	workerPool.Stop()
 
 	log.Printf("[Anime Downloader] Server stopped cleanly.")
 }

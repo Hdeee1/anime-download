@@ -42,7 +42,7 @@ func (h *DownloadHandler) EnqueueDownloads(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	enqueuedJobs := make([]*model.DownloadJob, 0, len(req.EpisodeNumbers))
+	enqueuedJobs := make([]model.DownloadJob, 0, len(req.EpisodeNumbers))
 
 	for _, epNum := range req.EpisodeNumbers {
 		title, epURL, err := h.catalog.FindEpisode(req.AnimeID, req.SeasonNumber, epNum)
@@ -72,8 +72,9 @@ func (h *DownloadHandler) EnqueueDownloads(w http.ResponseWriter, r *http.Reques
 			Speed:      "0 KB/s",
 		}
 
+		jobSnapshot := *job
 		if err := h.workerPool.Enqueue(job); err == nil {
-			enqueuedJobs = append(enqueuedJobs, job)
+			enqueuedJobs = append(enqueuedJobs, jobSnapshot)
 		}
 	}
 

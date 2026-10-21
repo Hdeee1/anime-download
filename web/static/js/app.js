@@ -10,6 +10,17 @@ document.addEventListener('DOMContentLoaded', () => {
     trayCollapsed: true,
   };
 
+  // Helper: Escape HTML to prevent injection and DOM breakage
+  function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // DOM Elements
   const catalogView = document.getElementById('catalogView');
   const detailView = document.getElementById('detailView');
@@ -34,19 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Download Tray Elements
   const downloadTray = document.getElementById('downloadTray');
   const trayHeader = document.getElementById('trayHeader');
-  const trayToggle = document.getElementById('trayToggle');
   const trayJobCount = document.getElementById('trayJobCount');
   const emptyTrayMessage = document.getElementById('emptyTrayMessage');
   const trayJobsList = document.getElementById('trayJobsList');
   const toastContainer = document.getElementById('toastContainer');
 
-  // Helpers: Toast Notification
+  // Helper: Toast Notification
   function showToast(message, type = 'info', duration = 4000) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.innerHTML = `
-      <div class="toast-content">${message}</div>
-    `;
+    toast.innerHTML = `<div class="toast-content">${escapeHtml(message)}</div>`;
     toastContainer.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
@@ -56,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, duration);
   }
 
-  // Format File Size
+  // Helper: Format File Size
   function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -79,21 +87,24 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       animeGrid.innerHTML = `
         <div class="loading-state">
-          <p style="color: var(--accent-rose);">Gagal memuat katalog: ${err.message}</p>
+          <p style="color: var(--accent-rose);">Gagal memuat katalog: ${escapeHtml(err.message)}</p>
         </div>
       `;
       showToast('Gagal memuat katalog: ' + err.message, 'error');
     }
   }
 
-  // Load Existing Downloads from Backend
+  // Load Existing Downloads from Backend (filtering only active jobs to prevent ghost state)
   async function loadExistingDownloads() {
     try {
       const data = await API.getDownloads();
       updateWorkerDisplay(data.activeWorkers, data.maxWorkers);
       if (data.jobs && Array.isArray(data.jobs)) {
+        state.activeJobs.clear();
         data.jobs.forEach((job) => {
-          state.activeJobs.set(job.jobId, job);
+          if (job.status === 'QUEUED' || job.status === 'DOWNLOADING') {
+            state.activeJobs.set(job.jobId, job);
+          }
         });
         renderTray();
       }
@@ -110,6 +121,14 @@ document.addEventListener('DOMContentLoaded', () => {
       workerStats.textContent = `${max} / ${max} Idle`;
       workerStats.parentElement.parentElement.style.borderColor = 'rgba(16, 185, 129, 0.2)';
     }
+  }
+
+  function refreshWorkerStatus() {
+    let activeCount = 0;
+    state.activeJobs.forEach((j) => {
+      if (j.status === 'DOWNLOADING') activeCount++;
+    });
+    updateWorkerDisplay(activeCount, 2);
   }
 
   // Render Catalog Grid
@@ -129,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </svg>
           </div>
           <div class="empty-state-title">Anime Tidak Ditemukan</div>
-          <div class="empty-state-desc">Tidak ada anime yang cocok dengan kata kunci "${query}".</div>
+          <div class="empty-state-desc">Tidak ada anime yang cocok dengan kata kunci "${escapeHtml(query)}".</div>
         </div>
       `;
       return;
@@ -147,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
       card.innerHTML = `
         <div>
           <div class="card-header">
-            <h2 class="card-title">${anime.title}</h2>
+            <h2 class="card-title">${escapeHtml(anime.title)}</h2>
           </div>
           <div class="card-meta">
             <span class="badge badge-purple">${anime.totalSeasons} Season</span>
@@ -173,8 +192,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Open Anime Detail
-  async function openAnimeDetail(animeId) {
+  // Open Anime Detail (preserveSeason to prevent resetting user tab/selection on background SSE updates)
+  async function openAnimeDetail(animeId, preserveSeason = false) {
     try {
       const detail = await API.getAnimeDetail(animeId);
       state.currentAnime = detail;
@@ -205,12 +224,20 @@ document.addEventListener('DOMContentLoaded', () => {
       // Render Season Tabs
       renderSeasonTabs();
 
-      // Default to season with episodes or first season
-      let defaultSeason = detail.seasons[0]?.season || 1;
-      const firstWithEps = detail.seasons.find((s) => s.totalEpisodes > 0);
-      if (firstWithEps) defaultSeason = firstWithEps.season;
+      let targetSeason = detail.seasons[0]?.season || 1;
+      if (
+        preserveSeason &&
+        state.currentSeasonNumber &&
+        detail.seasons.some((s) => s.season === state.currentSeasonNumber)
+      ) {
+        targetSeason = state.currentSeasonNumber;
+      } else {
+        const firstWithEps = detail.seasons.find((s) => s.totalEpisodes > 0);
+        if (firstWithEps) targetSeason = firstWithEps.season;
+        state.selectedEpisodeNumbers.clear();
+      }
 
-      selectSeason(defaultSeason);
+      selectSeason(targetSeason, preserveSeason);
     } catch (err) {
       showToast('Gagal memuat detail anime: ' + err.message, 'error');
     }
@@ -223,20 +250,21 @@ document.addEventListener('DOMContentLoaded', () => {
       tab.className = `season-tab ${s.season === state.currentSeasonNumber ? 'active' : ''}`;
       tab.dataset.season = s.season;
       tab.innerHTML = `
-        <span>${s.title}</span>
+        <span>${escapeHtml(s.title)}</span>
         <span class="badge ${s.totalEpisodes > 0 ? 'badge-gray' : 'badge-amber'}" style="font-size: 0.7rem;">
           ${s.totalEpisodes > 0 ? `${s.downloadedCount}/${s.totalEpisodes}` : 'Coming Soon'}
         </span>
       `;
-      tab.addEventListener('click', () => selectSeason(s.season));
+      tab.addEventListener('click', () => selectSeason(s.season, false));
       seasonTabs.appendChild(tab);
     });
   }
 
-  function selectSeason(seasonNumber) {
+  function selectSeason(seasonNumber, preserveSelection = false) {
     state.currentSeasonNumber = seasonNumber;
-    state.selectedEpisodeNumbers.clear();
-    selectAllCheckbox.checked = false;
+    if (!preserveSelection) {
+      state.selectedEpisodeNumbers.clear();
+    }
     updateSelectedCount();
 
     // Update tab styling
@@ -282,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
       item.className = `episode-item ${ep.isDownloaded ? 'downloaded' : ''}`;
       item.id = `episode-row-${ep.number}`;
 
-      // Check if this episode is currently active or queued in state
+      // Check if this episode is currently active or queued
       let activeJob = null;
       for (const [_, job] of state.activeJobs) {
         if (
@@ -294,6 +322,10 @@ document.addEventListener('DOMContentLoaded', () => {
           break;
         }
       }
+
+      const isJobActive =
+        activeJob && (activeJob.status === 'DOWNLOADING' || activeJob.status === 'QUEUED');
+      const isCheckboxDisabled = ep.isDownloaded || isJobActive;
 
       let statusBadge = '';
       let actionButton = '';
@@ -308,24 +340,23 @@ document.addEventListener('DOMContentLoaded', () => {
             <span>Tersedia</span>
           </button>
         `;
-      } else if (activeJob) {
-        if (activeJob.status === 'DOWNLOADING') {
-          item.classList.add('downloading');
-          statusBadge = `<span class="badge badge-amber" id="ep-badge-${ep.number}">Downloading (${activeJob.progress.toFixed(0)}%)</span>`;
-          actionButton = `
-            <button class="btn btn-danger btn-sm btn-cancel-job" data-jobid="${activeJob.jobId}">
-              <span>Batal</span>
-            </button>
-          `;
-        } else if (activeJob.status === 'QUEUED') {
-          statusBadge = `<span class="badge badge-purple" id="ep-badge-${ep.number}">Queued</span>`;
-          actionButton = `
-            <button class="btn btn-danger btn-sm btn-cancel-job" data-jobid="${activeJob.jobId}">
-              <span>Batal</span>
-            </button>
-          `;
-        }
+      } else if (activeJob && activeJob.status === 'DOWNLOADING') {
+        item.classList.add('downloading');
+        statusBadge = `<span class="badge badge-amber" id="ep-badge-${ep.number}">Downloading (${activeJob.progress.toFixed(0)}%)</span>`;
+        actionButton = `
+          <button class="btn btn-danger btn-sm btn-cancel-job" data-jobid="${escapeHtml(activeJob.jobId)}">
+            <span>Batal</span>
+          </button>
+        `;
+      } else if (activeJob && activeJob.status === 'QUEUED') {
+        statusBadge = `<span class="badge badge-purple" id="ep-badge-${ep.number}">Queued</span>`;
+        actionButton = `
+          <button class="btn btn-danger btn-sm btn-cancel-job" data-jobid="${escapeHtml(activeJob.jobId)}">
+            <span>Batal</span>
+          </button>
+        `;
       } else {
+        // Fallback for not downloaded (or previously failed/canceled)
         statusBadge = `<span class="badge badge-gray" id="ep-badge-${ep.number}">Belum Terunduh</span>`;
         actionButton = `
           <button class="btn btn-primary btn-sm btn-download-single" data-ep="${ep.number}">
@@ -341,15 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
       item.innerHTML = `
         <div class="ep-left">
           <label class="custom-checkbox">
-            <input type="checkbox" class="ep-checkbox" data-ep="${ep.number}" ${ep.isDownloaded ? 'disabled' : ''} ${state.selectedEpisodeNumbers.has(ep.number) ? 'checked' : ''}>
+            <input type="checkbox" class="ep-checkbox" data-ep="${ep.number}" ${isCheckboxDisabled ? 'disabled' : ''} ${state.selectedEpisodeNumbers.has(ep.number) ? 'checked' : ''}>
             <span class="checkmark"></span>
           </label>
           <div class="ep-number">EP ${String(ep.number).padStart(2, '0')}</div>
           <div class="ep-info">
-            <div class="ep-filename">${ep.filename}</div>
+            <div class="ep-filename">${escapeHtml(ep.filename)}</div>
             <div class="ep-details">
               <span class="badge badge-gray">1080p Full HD</span>
-              <span id="ep-speed-${ep.number}" style="display: ${activeJob && activeJob.status === 'DOWNLOADING' ? 'inline' : 'none'}; font-family: var(--font-mono); color: var(--accent-cyan);">${activeJob ? activeJob.speed : ''}</span>
+              <span id="ep-speed-${ep.number}" style="display: ${activeJob && activeJob.status === 'DOWNLOADING' ? 'inline' : 'none'}; font-family: var(--font-mono); color: var(--accent-cyan);">${escapeHtml(activeJob ? activeJob.speed : '')}</span>
             </div>
           </div>
         </div>
@@ -389,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Single Download buttons
     document.querySelectorAll('.btn-download-single').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', async () => {
         const epNum = parseInt(btn.dataset.ep);
         await triggerBatchDownload([epNum]);
       });
@@ -404,6 +435,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function isEpisodeBusy(epNum, seasonNum) {
+    for (const [_, job] of state.activeJobs) {
+      if (
+        job.animeId === state.currentAnime.id &&
+        job.season === seasonNum &&
+        job.episode === epNum
+      ) {
+        if (job.status === 'DOWNLOADING' || job.status === 'QUEUED') return true;
+      }
+    }
+    return false;
+  }
+
   function updateSelectedCount() {
     const count = state.selectedEpisodeNumbers.size;
     selectedCountText.textContent = `${count} terpilih`;
@@ -414,8 +458,11 @@ document.addEventListener('DOMContentLoaded', () => {
     );
     if (!seasonData) return;
 
-    const undownloadedCount = seasonData.episodes.filter((e) => !e.isDownloaded).length;
-    selectAllCheckbox.checked = undownloadedCount > 0 && count === undownloadedCount;
+    const selectableCount = seasonData.episodes.filter(
+      (e) => !e.isDownloaded && !isEpisodeBusy(e.number, seasonData.season)
+    ).length;
+
+    selectAllCheckbox.checked = selectableCount > 0 && count === selectableCount;
   }
 
   // Batch Download Trigger
@@ -430,7 +477,11 @@ document.addEventListener('DOMContentLoaded', () => {
         episodeNumbers
       );
 
-      showToast(`Berhasil mendaftarkan ${res.enqueuedCount} episode!`, 'success');
+      if (res.enqueuedCount === 0) {
+        showToast('Semua episode terpilih sudah berada di antrean atau sudah selesai diunduh.', 'info');
+      } else {
+        showToast(`Berhasil mendaftarkan ${res.enqueuedCount} episode!`, 'success');
+      }
 
       // Expand tray to show progress
       state.trayCollapsed = false;
@@ -441,6 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
         res.jobs.forEach((j) => {
           state.activeJobs.set(j.jobId, j);
         });
+        refreshWorkerStatus();
         renderTray();
       }
 
@@ -463,9 +515,10 @@ document.addEventListener('DOMContentLoaded', () => {
       await API.cancelDownload(jobId);
       showToast('Unduhan dibatalkan.', 'info');
       state.activeJobs.delete(jobId);
+      refreshWorkerStatus();
       renderTray();
 
-      // Refresh current view
+      // Refresh current view without resetting tab
       if (state.currentAnime) {
         const seasonData = state.currentAnime.seasons.find(
           (s) => s.season === state.currentSeasonNumber
@@ -477,16 +530,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Render Download Tray
+  // Render Download Tray (Using clean event listeners, no inline onclick)
   function renderTray() {
     const jobs = Array.from(state.activeJobs.values());
     trayJobCount.textContent = jobs.length;
 
-    let activeCount = 0;
-    jobs.forEach((j) => {
-      if (j.status === 'DOWNLOADING') activeCount++;
-    });
-    updateWorkerDisplay(activeCount, 2);
+    refreshWorkerStatus();
 
     if (jobs.length === 0) {
       emptyTrayMessage.style.display = 'block';
@@ -503,29 +552,34 @@ document.addEventListener('DOMContentLoaded', () => {
       card.id = `tray-job-${job.jobId}`;
 
       const isDownloading = job.status === 'DOWNLOADING';
+      const isQueued = job.status === 'QUEUED';
       const statusBadgeClass = isDownloading
         ? 'badge-amber'
-        : job.status === 'QUEUED'
+        : isQueued
         ? 'badge-purple'
         : job.status === 'COMPLETED'
         ? 'badge-emerald'
         : 'badge-rose';
 
+      const showCancelBtn = isDownloading || isQueued;
+
       card.innerHTML = `
         <div class="job-card-header">
-          <div class="job-card-title" title="${job.filename}">
-            <strong>${job.animeTitle}</strong> - S${String(job.season).padStart(2, '0')}E${String(job.episode).padStart(2, '0')}
+          <div class="job-card-title" title="${escapeHtml(job.filename)}">
+            <strong>${escapeHtml(job.animeTitle)}</strong> - S${String(job.season).padStart(2, '0')}E${String(job.episode).padStart(2, '0')}
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="badge ${statusBadgeClass}" id="tray-badge-${job.jobId}">${job.status}</span>
-            <button class="btn btn-danger btn-sm" style="padding: 2px 8px; font-size: 0.72rem;" onclick="window.cancelDownloadJob('${job.jobId}')">
-              Batal
-            </button>
+            ${
+              showCancelBtn
+                ? `<button class="btn btn-danger btn-sm btn-tray-cancel" style="padding: 2px 8px; font-size: 0.72rem;" data-jobid="${escapeHtml(job.jobId)}">Batal</button>`
+                : ''
+            }
           </div>
         </div>
         <div class="job-card-meta">
           <span id="tray-bytes-${job.jobId}">${formatBytes(job.downloadedBytes)} / ${formatBytes(job.totalBytes)}</span>
-          <span id="tray-speed-${job.jobId}" style="color: var(--accent-cyan); font-weight: 600;">${job.speed || '0 KB/s'}</span>
+          <span id="tray-speed-${job.jobId}" style="color: var(--accent-cyan); font-weight: 600;">${escapeHtml(job.speed || '0 KB/s')}</span>
           <span id="tray-percent-${job.jobId}">${job.progress.toFixed(1)}%</span>
         </div>
         <div class="job-progress-bar">
@@ -537,8 +591,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Global cancel helper for onclick
-  window.cancelDownloadJob = cancelJob;
+  // Event Delegation for Tray Cancel buttons
+  trayJobsList.addEventListener('click', async (e) => {
+    const cancelBtn = e.target.closest('.btn-tray-cancel');
+    if (cancelBtn) {
+      const jobId = cancelBtn.dataset.jobid;
+      await cancelJob(jobId);
+    }
+  });
 
   // Realtime Server-Sent Events (SSE) Listener Setup
   function initSSE() {
@@ -551,6 +611,7 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       enqueued(job) {
         state.activeJobs.set(job.jobId, job);
+        refreshWorkerStatus();
         renderTray();
       },
       progress(data) {
@@ -562,7 +623,9 @@ document.addEventListener('DOMContentLoaded', () => {
           job.totalBytes = data.totalBytes;
           job.speed = data.speed;
 
-          // Update tray elements dynamically without re-rendering entire tray
+          refreshWorkerStatus();
+
+          // Update tray elements dynamically
           const bar = document.getElementById(`tray-bar-${data.jobId}`);
           const percent = document.getElementById(`tray-percent-${data.jobId}`);
           const bytes = document.getElementById(`tray-bytes-${data.jobId}`);
@@ -579,7 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
 
-        // Also update episode row if visible in current view
+        // Update episode row if visible in current view
         if (
           state.currentAnime &&
           state.currentAnime.id === data.animeId &&
@@ -600,33 +663,36 @@ document.addEventListener('DOMContentLoaded', () => {
       completed(data) {
         showToast(`Unduhan selesai: ${data.filename}!`, 'success', 5000);
         state.activeJobs.delete(data.jobId);
+        refreshWorkerStatus();
         renderTray();
 
-        // Refresh detail view if currently open
+        // Refresh detail view preserving active tab and selections
         if (state.currentAnime && state.currentAnime.id === data.animeId) {
-          openAnimeDetail(data.animeId);
+          openAnimeDetail(data.animeId, true);
         }
-        // Refresh catalog summaries
-        API.getAnimeList().then((list) => {
-          state.animeList = list;
-          if (catalogView.classList.contains('active')) {
+        // Only refresh catalog summaries if currently on catalog view
+        if (catalogView.classList.contains('active')) {
+          API.getAnimeList().then((list) => {
+            state.animeList = list;
             renderCatalog(list);
-          }
-        });
+          });
+        }
       },
       failed(data) {
         showToast(`Gagal mengunduh Episode ${data.episode}: ${data.error}`, 'error', 6000);
         state.activeJobs.delete(data.jobId);
+        refreshWorkerStatus();
         renderTray();
-        if (state.currentAnime) {
-          openAnimeDetail(state.currentAnime.id);
+        if (state.currentAnime && state.currentAnime.id === data.animeId) {
+          openAnimeDetail(state.currentAnime.id, true);
         }
       },
       canceled(data) {
         state.activeJobs.delete(data.jobId);
+        refreshWorkerStatus();
         renderTray();
-        if (state.currentAnime) {
-          openAnimeDetail(state.currentAnime.id);
+        if (state.currentAnime && state.currentAnime.id === data.animeId) {
+          openAnimeDetail(state.currentAnime.id, true);
         }
       },
     });
@@ -638,7 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
     catalogView.classList.add('active');
     breadcrumbBar.style.display = 'none';
     state.currentAnime = null;
-    loadCatalog(); // Refresh catalog to update badges
+    loadCatalog();
   });
 
   searchInput.addEventListener('input', () => {
@@ -666,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (e.target.checked) {
       seasonData.episodes.forEach((ep) => {
-        if (!ep.isDownloaded) {
+        if (!ep.isDownloaded && !isEpisodeBusy(ep.number, seasonData.season)) {
           state.selectedEpisodeNumbers.add(ep.number);
         }
       });
@@ -695,11 +761,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!seasonData) return;
 
     const epsToDownload = seasonData.episodes
-      .filter((e) => !e.isDownloaded)
+      .filter((e) => !e.isDownloaded && !isEpisodeBusy(e.number, seasonData.season))
       .map((e) => e.number);
 
     if (epsToDownload.length === 0) {
-      showToast('Semua episode dalam season ini sudah terunduh!', 'info');
+      showToast('Semua episode dalam season ini sudah terunduh atau sedang aktif di antrean!', 'info');
       return;
     }
 

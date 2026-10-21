@@ -38,55 +38,65 @@ func (wp *WorkerPool) worker(workerID int) {
 }
 
 func (wp *WorkerPool) processJob(job *model.DownloadJob) {
+	// Atomic check & state transition under lock
+	wp.jobsMu.Lock()
+	if job.Status == model.StatusCanceled {
+		wp.jobsMu.Unlock()
+		return
+	}
+	job.Status = model.StatusDownloading
+	partPath := job.TargetPath + ".part"
+	job.PartPath = partPath
+	initialTotalBytes := job.TotalBytes
+	jobID := job.JobID
+	animeID := job.AnimeID
+	season := job.Season
+	episode := job.Episode
+	targetPath := job.TargetPath
+	jobURL := job.URL
+	wp.jobsMu.Unlock()
+
 	// Create context for this specific download
 	jobCtx, jobCancel := context.WithCancel(wp.ctx)
 
 	wp.cancelsMu.Lock()
-	wp.cancels[job.JobID] = jobCancel
+	wp.cancels[jobID] = jobCancel
 	wp.cancelsMu.Unlock()
 
 	defer func() {
 		wp.cancelsMu.Lock()
-		delete(wp.cancels, job.JobID)
+		delete(wp.cancels, jobID)
 		wp.cancelsMu.Unlock()
 	}()
 
 	// Ensure destination directory exists
-	dir := filepath.Dir(job.TargetPath)
+	dir := filepath.Dir(targetPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		wp.failJob(job, fmt.Errorf("failed to create directory: %w", err))
 		return
 	}
 
-	partPath := job.TargetPath + ".part"
-	job.PartPath = partPath
-
-	// Update status to DOWNLOADING
-	wp.jobsMu.Lock()
-	job.Status = model.StatusDownloading
-	wp.jobsMu.Unlock()
-
 	wp.Broadcast("progress", map[string]any{
-		"jobId":           job.JobID,
-		"animeId":         job.AnimeID,
-		"season":          job.Season,
-		"episode":         job.Episode,
-		"status":          job.Status,
+		"jobId":           jobID,
+		"animeId":         animeID,
+		"season":          season,
+		"episode":         episode,
+		"status":          model.StatusDownloading,
 		"progress":        0.0,
 		"downloadedBytes": int64(0),
-		"totalBytes":      job.TotalBytes,
+		"totalBytes":      initialTotalBytes,
 		"speed":           "0 KB/s",
 	})
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(jobCtx, http.MethodGet, job.URL, nil)
+	req, err := http.NewRequestWithContext(jobCtx, http.MethodGet, jobURL, nil)
 	if err != nil {
 		wp.failJob(job, fmt.Errorf("failed to create http request: %w", err))
 		return
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AnimeBatchDownloader/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := wp.httpClient.Do(req)
 	if err != nil {
 		if jobCtx.Err() == context.Canceled {
 			wp.cancelJob(job)
@@ -162,11 +172,11 @@ func (wp *WorkerPool) processJob(job *model.DownloadJob) {
 				wp.jobsMu.Unlock()
 
 				wp.Broadcast("progress", map[string]any{
-					"jobId":           job.JobID,
-					"animeId":         job.AnimeID,
-					"season":          job.Season,
-					"episode":         job.Episode,
-					"status":          job.Status,
+					"jobId":           jobID,
+					"animeId":         animeID,
+					"season":          season,
+					"episode":         episode,
+					"status":          model.StatusDownloading,
 					"progress":        progress,
 					"downloadedBytes": downloadedBytes,
 					"totalBytes":      totalBytes,
@@ -198,8 +208,15 @@ func (wp *WorkerPool) processJob(job *model.DownloadJob) {
 		return
 	}
 
+	// Validate complete byte transfer
+	if downloadedBytes == 0 || (totalBytes > 0 && downloadedBytes != totalBytes) {
+		_ = os.Remove(partPath)
+		wp.failJob(job, fmt.Errorf("incomplete download: got %d of %d bytes", downloadedBytes, totalBytes))
+		return
+	}
+
 	// Atomic rename from .part to final .mp4
-	if err := os.Rename(partPath, job.TargetPath); err != nil {
+	if err := os.Rename(partPath, targetPath); err != nil {
 		_ = os.Remove(partPath)
 		wp.failJob(job, fmt.Errorf("failed to finalize file: %w", err))
 		return

@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -22,6 +23,8 @@ type WorkerPool struct {
 	cancelsMu  sync.Mutex
 	cancels    map[string]context.CancelFunc
 
+	httpClient *http.Client
+
 	listenersMu sync.RWMutex
 	listeners   map[chan SSEEvent]struct{}
 
@@ -37,9 +40,16 @@ func NewWorkerPool(maxWorkers int, queueSize int) *WorkerPool {
 		jobQueue:   make(chan *model.DownloadJob, queueSize),
 		jobs:       make(map[string]*model.DownloadJob),
 		cancels:    make(map[string]context.CancelFunc),
-		listeners:  make(map[chan SSEEvent]struct{}),
-		ctx:        ctx,
-		cancel:     cancel,
+		httpClient: &http.Client{
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 30 * time.Second,
+				TLSHandshakeTimeout:   15 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		},
+		listeners: make(map[chan SSEEvent]struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 }
 
@@ -77,11 +87,13 @@ func (wp *WorkerPool) Enqueue(job *model.DownloadJob) error {
 		}
 	}
 	wp.jobs[job.JobID] = job
+	// Copy struct to prevent race when broadcasting
+	jobCopy := *job
 	wp.jobsMu.Unlock()
 
 	select {
 	case wp.jobQueue <- job:
-		wp.Broadcast("enqueued", job)
+		wp.Broadcast("enqueued", jobCopy)
 		return nil
 	default:
 		wp.jobsMu.Lock()
@@ -124,22 +136,25 @@ func (wp *WorkerPool) Cancel(jobID string) bool {
 	return false
 }
 
-func (wp *WorkerPool) GetAllJobs() []*model.DownloadJob {
+func (wp *WorkerPool) GetAllJobs() []model.DownloadJob {
 	wp.jobsMu.RLock()
 	defer wp.jobsMu.RUnlock()
 
-	list := make([]*model.DownloadJob, 0, len(wp.jobs))
+	list := make([]model.DownloadJob, 0, len(wp.jobs))
 	for _, job := range wp.jobs {
-		list = append(list, job)
+		list = append(list, *job) // Value copy to prevent data race
 	}
 	return list
 }
 
-func (wp *WorkerPool) GetJob(jobID string) (*model.DownloadJob, bool) {
+func (wp *WorkerPool) GetJob(jobID string) (model.DownloadJob, bool) {
 	wp.jobsMu.RLock()
 	defer wp.jobsMu.RUnlock()
 	job, ok := wp.jobs[jobID]
-	return job, ok
+	if ok {
+		return *job, true
+	}
+	return model.DownloadJob{}, false
 }
 
 // SSE Subscription

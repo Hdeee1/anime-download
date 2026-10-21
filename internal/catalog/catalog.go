@@ -5,10 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"anime-download/internal/model"
 )
+
+var invalidPathChars = strings.NewReplacer(
+	"/", "-", "\\", "-", ":", " -", "*", "", "?", "", "\"", "'", "<", "", ">", "", "|", "-",
+)
+
+func sanitizeName(name string) string {
+	s := invalidPathChars.Replace(name)
+	return strings.TrimSpace(s)
+}
 
 type CatalogService struct {
 	mu           sync.RWMutex
@@ -49,10 +59,11 @@ func (cs *CatalogService) Reload() error {
 	return nil
 }
 
-// GetStoragePath returns expected folder and filename for an episode
+// GetStoragePath returns expected folder and filename for an episode with sanitized paths
 func (cs *CatalogService) GetStoragePath(animeTitle string, season, episode int) (folderPath, filename, fullPath string) {
-	folderPath = filepath.Join(cs.basePath, animeTitle, fmt.Sprintf("Season %d", season))
-	filename = fmt.Sprintf("%s - S%02dE%02d.mp4", animeTitle, season, episode)
+	safeTitle := sanitizeName(animeTitle)
+	folderPath = filepath.Join(cs.basePath, safeTitle, fmt.Sprintf("Season %d", season))
+	filename = fmt.Sprintf("%s - S%02dE%02d.mp4", safeTitle, season, episode)
 	fullPath = filepath.Join(folderPath, filename)
 	return folderPath, filename, fullPath
 }
@@ -73,10 +84,15 @@ func (cs *CatalogService) GetAllAnime() []model.AnimeSummary {
 		downloadedCount := 0
 
 		for _, s := range a.Seasons {
-			totalEpisodes += len(s.Episodes)
+			seasonTotal := s.TotalEpisodes
+			if len(s.Episodes) > seasonTotal {
+				seasonTotal = len(s.Episodes)
+			}
+			totalEpisodes += seasonTotal
+
 			for _, ep := range s.Episodes {
 				_, _, fullPath := cs.GetStoragePath(a.Title, s.Season, ep.Number)
-				if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+				if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Size() > 0 {
 					downloadedCount++
 				}
 			}
@@ -112,10 +128,15 @@ func (cs *CatalogService) GetAnimeDetail(id string) (*model.AnimeDetail, error) 
 			}
 
 			for _, s := range a.Seasons {
+				totalEps := s.TotalEpisodes
+				if len(s.Episodes) > totalEps {
+					totalEps = len(s.Episodes)
+				}
+
 				sDetail := model.SeasonDetail{
 					Season:          s.Season,
 					Title:           s.Title,
-					TotalEpisodes:   len(s.Episodes),
+					TotalEpisodes:   totalEps,
 					DownloadedCount: 0,
 					Episodes:        make([]model.EpisodeDetail, 0, len(s.Episodes)),
 				}
@@ -125,7 +146,7 @@ func (cs *CatalogService) GetAnimeDetail(id string) (*model.AnimeDetail, error) 
 					isDownloaded := false
 					var fileSize int64 = 0
 
-					if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+					if info, err := os.Stat(fullPath); err == nil && !info.IsDir() && info.Size() > 0 {
 						isDownloaded = true
 						fileSize = info.Size()
 						sDetail.DownloadedCount++
