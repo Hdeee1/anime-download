@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anime Batch Downloader</title>
+  <meta name="description" content="Aplikasi web lokal untuk mengelola dan mengunduh video anime direct MP4 secara batch.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Navbar -->
+    <header class="navbar">
+      <div class="nav-left">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </div>
+          <div class="logo-text">
+            <span class="brand-title">ANIME<span class="gradient-text">FLOW</span></span>
+            <span class="brand-sub">Batch Downloader</span>
+          </div>
+        </div>
+        <div class="path-badge" title="Target Direktori Penyimpanan">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span class="path-text">Local Storage</span>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="worker-status" id="workerStatus">
+          <span class="status-dot"></span>
+          <span class="status-label">Workers: <strong id="workerStats">2 / 2 Idle</strong></span>
+        </div>
+        <button id="btnReload" class="btn btn-secondary btn-icon" title="Muat ulang anime_list.json">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span>Reload Data</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="main-container">
+      <!-- Breadcrumb Bar -->
+      <nav class="breadcrumb-bar" id="breadcrumbBar" style="display: none;">
+        <button class="btn-breadcrumb" id="btnBackHome">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span>Daftar Anime</span>
+        </button>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-current" id="breadcrumbTitle">Title</span>
+      </nav>
+
+      <!-- View: Anime Catalog Grid -->
+      <section id="catalogView" class="view-section active">
+        <div class="section-header">
+          <div>
+            <h1 class="section-title">Katalog Anime</h1>
+            <p class="section-subtitle">Pilih anime untuk mengelola season dan mengunduh episode</p>
+          </div>
+          <div class="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Cari judul anime...">
+          </div>
+        </div>
+
+        <div class="anime-grid" id="animeGrid">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Memuat katalog anime...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- View: Anime Detail & Season Episodes -->
+      <section id="detailView" class="view-section">
+        <div class="anime-hero" id="animeHero">
+          <div class="hero-content">
+            <h1 class="hero-title" id="detailAnimeTitle">Anime Title</h1>
+            <div class="hero-badges" id="heroBadges">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Season Tabs -->
+        <div class="season-tabs" id="seasonTabs">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Batch Action Toolbar -->
+        <div class="action-toolbar" id="actionToolbar">
+          <div class="toolbar-left">
+            <label class="custom-checkbox">
+              <input type="checkbox" id="selectAllCheckbox">
+              <span class="checkmark"></span>
+              <span class="label-text">Pilih Semua</span>
+            </label>
+            <span class="selected-count" id="selectedCountText">0 terpilih</span>
+          </div>
+
+          <div class="toolbar-right">
+            <button id="btnDownloadSelected" class="btn btn-primary" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Unduh Terpilih</span>
+            </button>
+            <button id="btnDownloadAllSeason" class="btn btn-accent">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+              <span>Unduh Semua di Season</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Episodes Container -->
+        <div class="episodes-container" id="episodesContainer">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+    </main>
+
+    <!-- Floating Download Manager Drawer -->
+    <div class="download-tray" id="downloadTray">
+      <div class="tray-header" id="trayHeader">
+        <div class="tray-title">
+          <div class="pulse-icon"></div>
+          <span>Download Manager (<span id="trayJobCount">0</span>)</span>
+        </div>
+        <button class="tray-toggle" id="trayToggle">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+      </div>
+
+      <div class="tray-body" id="trayBody">
+        <div class="empty-tray" id="emptyTrayMessage">
+          <p>Tidak ada unduhan aktif atau mengantre.</p>
+        </div>
+        <div class="tray-jobs-list" id="trayJobsList">
+          <!-- Dynamically populated with active/queued downloads -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "anime": [
+    {
+      "id": "contoh-anime",
+      "title": "Contoh Anime",
+      "seasons": [
+        {
+          "season": 1,
+          "title": "Season 1",
+          "totalEpisodes": 12,
+          "episodes": [
+            {
+              "number": 1,
+              "url": "https://storages.example.com/Contoh%20Anime%2F1-1080p-123456789.mp4"
+            },
+            {
+              "number": 2,
+              "url": "https://storages.example.com/Contoh%20Anime%2F2-1080p-123456790.mp4"
+            }
+          ]
+        },
+        {
+          "season": 2,
+          "title": "Season 2",
+          "totalEpisodes": 0,
+          "episodes": []
+        }
+      ]
+    }
+  ]
+}
