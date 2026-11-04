@@ -50,6 +50,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const trayJobsList = document.getElementById('trayJobsList');
   const toastContainer = document.getElementById('toastContainer');
 
+  // Import Modal Elements
+  const btnOpenImportModal = document.getElementById('btnOpenImportModal');
+  const importModal = document.getElementById('importModal');
+  const btnCloseImportModal = document.getElementById('btnCloseImportModal');
+  const btnCancelImport = document.getElementById('btnCancelImport');
+  const importForm = document.getElementById('importForm');
+  const modeExisting = document.getElementById('modeExisting');
+  const modeNew = document.getElementById('modeNew');
+  const sectionExistingAnime = document.getElementById('sectionExistingAnime');
+  const sectionNewAnime = document.getElementById('sectionNewAnime');
+  const selectExistingAnime = document.getElementById('selectExistingAnime');
+  const inputNewAnimeTitle = document.getElementById('inputNewAnimeTitle');
+  const existingSeasonGroup = document.getElementById('existingSeasonGroup');
+  const newSeasonNumGroup = document.getElementById('newSeasonNumGroup');
+  const seasonTitleGroup = document.getElementById('seasonTitleGroup');
+  const modalSelectSeason = document.getElementById('selectSeason');
+  const inputSeasonNumber = document.getElementById('inputSeasonNumber');
+  const inputSeasonTitle = document.getElementById('inputSeasonTitle');
+  const dynamicEpisodeRows = document.getElementById('dynamicEpisodeRows');
+  const btnAddEpisodeRow = document.getElementById('btnAddEpisodeRow');
+  const btnSubmitImport = document.getElementById('btnSubmitImport');
+
   // Helper: Toast Notification
   function showToast(message, type = 'info', duration = 4000) {
     const toast = document.createElement('div');
@@ -780,6 +802,309 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Set initial tray state (collapsed)
   downloadTray.classList.add('collapsed');
+
+  // ==========================================================================
+  // Import / Add Anime & Episode Modal Logic
+  // ==========================================================================
+
+  function resetDynamicRows(startEpNum = 1) {
+    dynamicEpisodeRows.innerHTML = '';
+    addEpisodeRow(startEpNum);
+  }
+
+  function addEpisodeRow(epNum = null) {
+    if (epNum == null) {
+      const rows = dynamicEpisodeRows.querySelectorAll('.episode-input-row');
+      if (rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        const lastEpInput = lastRow.querySelector('.row-ep-num');
+        const lastNum = parseInt(lastEpInput.value) || 0;
+        epNum = lastNum + 1;
+      } else {
+        epNum = 1;
+      }
+    }
+
+    const row = document.createElement('div');
+    row.className = 'episode-input-row';
+    row.innerHTML = `
+      <input type="number" class="form-input row-ep-num" min="1" value="${epNum}" placeholder="Ep" title="Nomor Episode (dapat diedit)">
+      <input type="url" class="form-input row-ep-url" placeholder="https://.../video.mp4" title="Link Direct MP4">
+      <button type="button" class="btn-delete-row" title="Hapus baris">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    `;
+
+    const epUrlInput = row.querySelector('.row-ep-url');
+    const deleteBtn = row.querySelector('.btn-delete-row');
+
+    // Auto-spawn next empty row with incremented episode number when user fills URL on the last row
+    epUrlInput.addEventListener('input', () => {
+      if (epUrlInput.value.trim() !== '') {
+        const allRows = dynamicEpisodeRows.querySelectorAll('.episode-input-row');
+        if (allRows[allRows.length - 1] === row) {
+          addEpisodeRow();
+        }
+      }
+    });
+
+    deleteBtn.addEventListener('click', () => {
+      row.remove();
+      const remainingRows = dynamicEpisodeRows.querySelectorAll('.episode-input-row');
+      if (remainingRows.length === 0) {
+        addEpisodeRow(1);
+      }
+    });
+
+    dynamicEpisodeRows.appendChild(row);
+    return row;
+  }
+
+  async function populateModalSeasons(animeId) {
+    modalSelectSeason.innerHTML = '';
+    let animeDetail = state.currentAnime && state.currentAnime.id === animeId ? state.currentAnime : null;
+
+    if (!animeDetail) {
+      try {
+        animeDetail = await API.getAnimeDetail(animeId);
+      } catch (err) {
+        console.warn('Failed to load anime detail for modal:', err);
+      }
+    }
+
+    let maxSeasonNum = 0;
+    if (animeDetail && animeDetail.seasons && animeDetail.seasons.length > 0) {
+      animeDetail.seasons.forEach((s) => {
+        if (s.season > maxSeasonNum) maxSeasonNum = s.season;
+        const opt = document.createElement('option');
+        opt.value = s.season;
+        opt.textContent = `${s.title} (${s.episodes.length} Episode)`;
+        modalSelectSeason.appendChild(opt);
+      });
+    }
+
+    const optNew = document.createElement('option');
+    optNew.value = '__new__';
+    optNew.textContent = '+ Tambah Season Baru...';
+    modalSelectSeason.appendChild(optNew);
+
+    if (state.currentAnime && state.currentAnime.id === animeId && state.currentSeasonNumber) {
+      modalSelectSeason.value = state.currentSeasonNumber;
+    } else if (animeDetail && animeDetail.seasons && animeDetail.seasons.length > 0) {
+      modalSelectSeason.value = animeDetail.seasons[0].season;
+    }
+
+    handleSeasonChange(animeDetail, maxSeasonNum);
+  }
+
+  function handleSeasonChange(animeDetail, maxSeasonNum) {
+    const isNewSeason = modalSelectSeason.value === '__new__';
+    if (isNewSeason) {
+      newSeasonNumGroup.style.display = 'block';
+      inputSeasonNumber.value = maxSeasonNum + 1;
+      inputSeasonTitle.value = `Season ${maxSeasonNum + 1}`;
+      resetDynamicRows(1);
+    } else {
+      newSeasonNumGroup.style.display = 'none';
+      const seasonNum = parseInt(modalSelectSeason.value);
+      const s = animeDetail?.seasons?.find((x) => x.season === seasonNum);
+      if (s) {
+        inputSeasonTitle.value = s.title || '';
+        let maxEp = 0;
+        s.episodes.forEach((e) => {
+          if (e.number > maxEp) maxEp = e.number;
+        });
+        resetDynamicRows(maxEp + 1);
+      } else {
+        resetDynamicRows(1);
+      }
+    }
+  }
+
+  function handleModeChange() {
+    if (modeExisting.checked) {
+      sectionExistingAnime.style.display = 'block';
+      sectionNewAnime.style.display = 'none';
+      existingSeasonGroup.style.display = 'block';
+      if (selectExistingAnime.value) {
+        populateModalSeasons(selectExistingAnime.value);
+      }
+    } else {
+      sectionExistingAnime.style.display = 'none';
+      sectionNewAnime.style.display = 'block';
+      existingSeasonGroup.style.display = 'none';
+      newSeasonNumGroup.style.display = 'block';
+      inputSeasonNumber.value = 1;
+      inputSeasonTitle.value = 'Season 1';
+      resetDynamicRows(1);
+    }
+  }
+
+  function openImportModal() {
+    selectExistingAnime.innerHTML = '';
+    if (state.animeList && state.animeList.length > 0) {
+      state.animeList.forEach((a) => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.title;
+        selectExistingAnime.appendChild(opt);
+      });
+      modeExisting.checked = true;
+      if (state.currentAnime) {
+        selectExistingAnime.value = state.currentAnime.id;
+      }
+    } else {
+      modeNew.checked = true;
+    }
+
+    handleModeChange();
+    importModal.style.display = 'flex';
+  }
+
+  function closeImportModal() {
+    importModal.style.display = 'none';
+    importForm.reset();
+  }
+
+  // Event Listeners for Modal
+  btnOpenImportModal.addEventListener('click', openImportModal);
+  btnCloseImportModal.addEventListener('click', closeImportModal);
+  btnCancelImport.addEventListener('click', closeImportModal);
+
+  importModal.addEventListener('click', (e) => {
+    if (e.target === importModal) {
+      closeImportModal();
+    }
+  });
+
+  modeExisting.addEventListener('change', handleModeChange);
+  modeNew.addEventListener('change', handleModeChange);
+
+  selectExistingAnime.addEventListener('change', () => {
+    if (selectExistingAnime.value) {
+      populateModalSeasons(selectExistingAnime.value);
+    }
+  });
+
+  modalSelectSeason.addEventListener('change', async () => {
+    let animeDetail = state.currentAnime && state.currentAnime.id === selectExistingAnime.value ? state.currentAnime : null;
+    if (!animeDetail && selectExistingAnime.value) {
+      try {
+        animeDetail = await API.getAnimeDetail(selectExistingAnime.value);
+      } catch (err) {}
+    }
+    let maxSeasonNum = 0;
+    if (animeDetail?.seasons) {
+      animeDetail.seasons.forEach((s) => {
+        if (s.season > maxSeasonNum) maxSeasonNum = s.season;
+      });
+    }
+    handleSeasonChange(animeDetail, maxSeasonNum);
+  });
+
+  btnAddEpisodeRow.addEventListener('click', () => {
+    addEpisodeRow();
+  });
+
+  importForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const isNewAnime = modeNew.checked;
+    let animeId = '';
+    let animeTitle = '';
+    let seasonNumber = 1;
+    let seasonTitle = '';
+
+    if (isNewAnime) {
+      animeTitle = inputNewAnimeTitle.value.trim();
+      if (!animeTitle) {
+        showToast('Judul anime baru wajib diisi!', 'error');
+        inputNewAnimeTitle.focus();
+        return;
+      }
+      seasonNumber = parseInt(inputSeasonNumber.value) || 1;
+      seasonTitle = inputSeasonTitle.value.trim();
+    } else {
+      animeId = selectExistingAnime.value;
+      if (!animeId) {
+        showToast('Pilih anime terlebih dahulu!', 'error');
+        return;
+      }
+      if (modalSelectSeason.value === '__new__') {
+        seasonNumber = parseInt(inputSeasonNumber.value) || 1;
+        seasonTitle = inputSeasonTitle.value.trim();
+      } else {
+        seasonNumber = parseInt(modalSelectSeason.value) || 1;
+        seasonTitle = inputSeasonTitle.value.trim();
+      }
+    }
+
+    const rows = dynamicEpisodeRows.querySelectorAll('.episode-input-row');
+    const episodes = [];
+    for (const r of rows) {
+      const epNumInput = r.querySelector('.row-ep-num');
+      const urlInput = r.querySelector('.row-ep-url');
+      const epNum = parseInt(epNumInput.value);
+      const url = urlInput.value.trim();
+
+      if (url !== '') {
+        if (!epNum || epNum < 1) {
+          showToast('Nomor episode harus berupa angka > 0!', 'error');
+          epNumInput.focus();
+          return;
+        }
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          showToast(`URL Episode ${epNum} tidak valid! Harus diawali http:// atau https://`, 'error');
+          urlInput.focus();
+          return;
+        }
+        episodes.push({ number: epNum, url });
+      }
+    }
+
+    if (episodes.length === 0) {
+      showToast('Masukkan minimal 1 URL episode!', 'error');
+      return;
+    }
+
+    try {
+      btnSubmitImport.disabled = true;
+      btnSubmitImport.innerHTML = `
+        <div class="spinner" style="width: 14px; height: 14px; margin: 0 6px 0 0; display: inline-block; vertical-align: middle; border-width: 2px;"></div>
+        <span>Menyimpan...</span>
+      `;
+
+      const payload = {
+        animeId,
+        animeTitle,
+        seasonNumber,
+        seasonTitle,
+        episodes,
+      };
+
+      const result = await API.importAnime(payload);
+      showToast(`Berhasil menyimpan ${episodes.length} episode untuk "${result.title}"!`, 'success');
+
+      closeImportModal();
+
+      // Refresh catalog list
+      state.animeList = await API.getAnimeList();
+      renderCatalog(state.animeList);
+
+      // If viewing detail of this anime or added new anime, navigate/refresh detail
+      if (state.currentAnime && (state.currentAnime.id === result.id || isNewAnime)) {
+        await openAnimeDetail(result.id, true);
+      }
+    } catch (err) {
+      showToast(`Gagal menyimpan: ${err.message}`, 'error');
+    } finally {
+      btnSubmitImport.disabled = false;
+      btnSubmitImport.innerHTML = `<span>Simpan ke Katalog</span>`;
+    }
+  });
 
   // Initialize
   loadCatalog();

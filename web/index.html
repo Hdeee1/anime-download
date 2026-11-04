@@ -39,6 +39,13 @@
           <span class="status-dot"></span>
           <span class="status-label">Workers: <strong id="workerStats">2 / 2 Idle</strong></span>
         </div>
+        <button id="btnOpenImportModal" class="btn btn-primary" title="Tambah anime atau episode baru">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>+ Tambah Episode</span>
+        </button>
         <button id="btnReload" class="btn btn-secondary btn-icon" title="Muat ulang anime_list.json">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 4 23 10 17 10"></polyline>
@@ -162,6 +169,111 @@
           <!-- Dynamically populated with active/queued downloads -->
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: Import / Add Anime & Episode -->
+  <div class="modal-backdrop" id="importModal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-wrapper">
+          <div class="modal-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </div>
+          <div>
+            <h2 class="modal-title">Tambah / Import Episode</h2>
+            <p class="modal-subtitle">Tambah anime baru atau episode baru ke katalog lokal</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseImportModal" title="Tutup">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <form id="importForm" class="modal-body">
+        <!-- Target Mode Selection (Radio Tabs) -->
+        <div class="form-group">
+          <label class="form-label">Tipe Penambahan</label>
+          <div class="radio-pill-group">
+            <label class="radio-pill">
+              <input type="radio" name="importTargetMode" value="existing" checked id="modeExisting">
+              <span>Anime Yang Sudah Ada</span>
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="importTargetMode" value="new" id="modeNew">
+              <span>+ Buat Anime Baru</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Section: Anime yang Sudah Ada -->
+        <div id="sectionExistingAnime" class="form-section">
+          <div class="form-group">
+            <label class="form-label" for="selectExistingAnime">Pilih Anime <span class="required">*</span></label>
+            <select id="selectExistingAnime" class="form-select">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+        </div>
+
+        <!-- Section: Anime Baru -->
+        <div id="sectionNewAnime" class="form-section" style="display: none;">
+          <div class="form-group">
+            <label class="form-label" for="inputNewAnimeTitle">Judul Anime Baru <span class="required">*</span></label>
+            <input type="text" id="inputNewAnimeTitle" class="form-input" placeholder="Contoh: Sousou no Frieren">
+          </div>
+        </div>
+
+        <!-- Season Configuration -->
+        <div class="form-row">
+          <div class="form-group form-col" id="existingSeasonGroup">
+            <label class="form-label" for="selectSeason">Pilih Season <span class="required">*</span></label>
+            <select id="selectSeason" class="form-select">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+
+          <div class="form-group form-col" id="newSeasonNumGroup" style="display: none;">
+            <label class="form-label" for="inputSeasonNumber">Nomor Season <span class="required">*</span></label>
+            <input type="number" id="inputSeasonNumber" class="form-input" min="1" value="1">
+          </div>
+
+          <div class="form-group form-col" id="seasonTitleGroup">
+            <label class="form-label" for="inputSeasonTitle">Judul Season (Opsional)</label>
+            <input type="text" id="inputSeasonTitle" class="form-input" placeholder="Contoh: Season 1 atau Hashira Training Arc">
+          </div>
+        </div>
+
+        <!-- Dynamic Episode Input Section -->
+        <div class="form-group">
+          <div class="episodes-header">
+            <div>
+              <label class="form-label" style="margin-bottom: 2px;">Daftar Episode & URL Direct MP4 <span class="required">*</span></label>
+              <span class="form-help">Ketik URL di baris terakhir untuk menambah baris episode berikutnya secara otomatis. Nomor episode dapat diedit.</span>
+            </div>
+            <button type="button" id="btnAddEpisodeRow" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 4px 10px;">
+              + Tambah Baris
+            </button>
+          </div>
+
+          <!-- Dynamic Rows Container -->
+          <div id="dynamicEpisodeRows" class="dynamic-rows-container">
+            <!-- Rows will be injected and managed by app.js -->
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btnCancelImport">Batal</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitImport">
+            <span>Simpan ke Katalog</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

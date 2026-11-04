@@ -98,6 +98,7 @@ func main() {
 	// REST API Routes
 	mux.HandleFunc("GET /api/anime", animeHandler.GetAllAnime)
 	mux.HandleFunc("GET /api/anime/{id}", animeHandler.GetAnimeDetail)
+	mux.HandleFunc("POST /api/anime", animeHandler.ImportAnime)
 	mux.HandleFunc("POST /api/anime/reload", animeHandler.ReloadCatalog)
 
 	mux.HandleFunc("POST /api/downloads", downloadHandler.EnqueueDownloads)

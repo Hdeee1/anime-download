@@ -121,3 +121,52 @@ func TestDownloadHandler_EnqueueAndCancel(t *testing.T) {
 		t.Errorf("Expected status 200 for cancel, got %d", rrCancel.Code)
 	}
 }
+
+func TestAnimeHandler_ImportAnime(t *testing.T) {
+	cs, wp, _ := setupTestServices(t)
+	defer wp.Stop()
+
+	h := NewAnimeHandler(cs)
+
+	// 1. Success case: add new anime
+	payload := model.ImportAnimeRequest{
+		AnimeTitle:   "Dungeon Meshi",
+		SeasonNumber: 1,
+		Episodes: []model.ImportEpisodeItem{
+			{Number: 1, URL: "https://example.com/ep1.mp4"},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/anime", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	h.ImportAnime(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201 Created, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp model.APIResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if !resp.Success {
+		t.Errorf("Expected resp.Success to be true")
+	}
+
+	// 2. Bad Request: Invalid payload
+	badPayload := model.ImportAnimeRequest{
+		AnimeTitle:   "Bad Request",
+		SeasonNumber: 1,
+		Episodes:     []model.ImportEpisodeItem{}, // empty episodes
+	}
+	badBody, _ := json.Marshal(badPayload)
+	reqBad := httptest.NewRequest(http.MethodPost, "/api/anime", bytes.NewReader(badBody))
+	rrBad := httptest.NewRecorder()
+
+	h.ImportAnime(rrBad, reqBad)
+
+	if rrBad.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 Bad Request, got %d", rrBad.Code)
+	}
+}

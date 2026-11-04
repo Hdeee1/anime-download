@@ -93,3 +93,25 @@ func (h *AnimeHandler) ReloadCatalog(w http.ResponseWriter, r *http.Request) {
 		"totalAnime": len(all),
 	})
 }
+
+// ImportAnime handles POST /api/anime
+func (h *AnimeHandler) ImportAnime(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req model.ImportAnimeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+		return
+	}
+
+	detail, err := h.catalog.AddOrUpdateAnime(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, detail)
+}

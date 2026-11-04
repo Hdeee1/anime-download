@@ -113,7 +113,32 @@ Mengambil detail satu anime beserta seluruh season, daftar episode, dan status k
 
 ---
 
-### 2.3 `POST /api/anime/reload`
+### 2.3 `POST /api/anime`
+Menambahkan anime baru, season baru, atau episode baru secara langsung ke katalog dan menyimpannya secara atomik ke `anime_list.json`. Jika nomor episode yang diinput sudah ada pada season bersangkutan, URL akan otomatis di-overwrite.
+
+* **Method**: `POST`
+* **Request Header**: `Content-Type: application/json`
+* **Request Body**:
+```json
+{
+  "animeId": "kusuriya-no-hitorigoto",
+  "animeTitle": "",
+  "seasonNumber": 1,
+  "seasonTitle": "Season 1",
+  "episodes": [
+    {
+      "number": 25,
+      "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    }
+  ]
+}
+```
+* **Status Response**: `201 Created` atau `400 Bad Request`
+* **Contoh Response**: Mengembalikan objek `AnimeDetail` terbaru.
+
+---
+
+### 2.4 `POST /api/anime/reload`
 Memuat ulang berkas `anime_list.json` dari disk tanpa perlu me-restart server Go.
 
 * **Method**: `POST`

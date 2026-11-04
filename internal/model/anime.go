@@ -94,3 +94,17 @@ type APIResponse struct {
 	Data    any    `json:"data"`
 	Error   *string `json:"error"`
 }
+
+// Import Models
+type ImportEpisodeItem struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+}
+
+type ImportAnimeRequest struct {
+	AnimeID      string              `json:"animeId,omitempty"`
+	AnimeTitle   string              `json:"animeTitle,omitempty"`
+	SeasonNumber int                 `json:"seasonNumber"`
+	SeasonTitle  string              `json:"seasonTitle,omitempty"`
+	Episodes     []ImportEpisodeItem `json:"episodes"`
+}

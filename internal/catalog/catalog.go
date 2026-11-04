@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -18,6 +19,28 @@ var invalidPathChars = strings.NewReplacer(
 func sanitizeName(name string) string {
 	s := invalidPathChars.Replace(name)
 	return strings.TrimSpace(s)
+}
+
+func slugifyTitle(title string) string {
+	s := strings.ToLower(title)
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+		} else if r == ' ' || r == '-' || r == '_' || r == '.' || r == ':' {
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	res := strings.Trim(b.String(), "-")
+	if res == "" {
+		res = "anime"
+	}
+	return res
 }
 
 type CatalogService struct {
@@ -56,6 +79,32 @@ func (cs *CatalogService) Reload() error {
 	}
 
 	cs.data = &catalogFile
+	return nil
+}
+
+// saveToFileLocked marshals the in-memory catalog and writes it atomically to jsonFilePath.
+// Must be called with cs.mu held.
+func (cs *CatalogService) saveToFileLocked() error {
+	if cs.data == nil {
+		return fmt.Errorf("catalog data is nil")
+	}
+
+	bytes, err := json.MarshalIndent(cs.data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal catalog data: %w", err)
+	}
+	bytes = append(bytes, '\n')
+
+	tmpPath := cs.jsonFilePath + ".tmp"
+	if err := os.WriteFile(tmpPath, bytes, 0644); err != nil {
+		return fmt.Errorf("failed to write temporary catalog file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, cs.jsonFilePath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to atomic rename catalog file: %w", err)
+	}
+
 	return nil
 }
 
@@ -115,6 +164,10 @@ func (cs *CatalogService) GetAnimeDetail(id string) (*model.AnimeDetail, error) 
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
+	return cs.getAnimeDetailLocked(id)
+}
+
+func (cs *CatalogService) getAnimeDetailLocked(id string) (*model.AnimeDetail, error) {
 	if cs.data == nil {
 		return nil, fmt.Errorf("catalog is empty")
 	}
@@ -169,6 +222,167 @@ func (cs *CatalogService) GetAnimeDetail(id string) (*model.AnimeDetail, error) 
 	}
 
 	return nil, fmt.Errorf("anime with id %q not found", id)
+}
+
+// AddOrUpdateAnime adds or updates an anime, season, and episodes in memory and persists to disk
+func (cs *CatalogService) AddOrUpdateAnime(req model.ImportAnimeRequest) (*model.AnimeDetail, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if cs.data == nil {
+		return nil, fmt.Errorf("catalog data is not loaded")
+	}
+
+	cleanAnimeID := strings.TrimSpace(req.AnimeID)
+	cleanAnimeTitle := strings.TrimSpace(req.AnimeTitle)
+
+	if cleanAnimeID == "" && cleanAnimeTitle == "" {
+		return nil, fmt.Errorf("animeTitle or animeId is required")
+	}
+
+	if req.SeasonNumber <= 0 {
+		req.SeasonNumber = 1
+	}
+
+	if len(req.Episodes) == 0 {
+		return nil, fmt.Errorf("at least one episode is required")
+	}
+
+	// Validate episodes
+	for _, ep := range req.Episodes {
+		if ep.Number <= 0 {
+			return nil, fmt.Errorf("invalid episode number: %d (must be > 0)", ep.Number)
+		}
+		u := strings.TrimSpace(ep.URL)
+		if u == "" {
+			return nil, fmt.Errorf("episode %d URL cannot be empty", ep.Number)
+		}
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			return nil, fmt.Errorf("episode %d URL must start with http:// or https://", ep.Number)
+		}
+	}
+
+	// 1. Find or create anime
+	animeIdx := -1
+	if cleanAnimeID != "" {
+		for i, a := range cs.data.Anime {
+			if a.ID == cleanAnimeID {
+				animeIdx = i
+				break
+			}
+		}
+		if animeIdx == -1 {
+			return nil, fmt.Errorf("anime with id %q not found", cleanAnimeID)
+		}
+	} else {
+		// Match by title case-insensitive
+		for i, a := range cs.data.Anime {
+			if strings.EqualFold(a.Title, cleanAnimeTitle) {
+				animeIdx = i
+				break
+			}
+		}
+		if animeIdx == -1 {
+			// Generate new unique ID
+			baseSlug := slugifyTitle(cleanAnimeTitle)
+			finalID := baseSlug
+			counter := 1
+			for {
+				exists := false
+				for _, a := range cs.data.Anime {
+					if a.ID == finalID {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					break
+				}
+				counter++
+				finalID = fmt.Sprintf("%s-%d", baseSlug, counter)
+			}
+
+			newAnime := model.AnimeData{
+				ID:      finalID,
+				Title:   cleanAnimeTitle,
+				Seasons: []model.SeasonData{},
+			}
+			cs.data.Anime = append(cs.data.Anime, newAnime)
+			animeIdx = len(cs.data.Anime) - 1
+		}
+	}
+
+	targetAnime := &cs.data.Anime[animeIdx]
+
+	// 2. Find or create season
+	seasonIdx := -1
+	for i, s := range targetAnime.Seasons {
+		if s.Season == req.SeasonNumber {
+			seasonIdx = i
+			break
+		}
+	}
+
+	if seasonIdx == -1 {
+		sTitle := strings.TrimSpace(req.SeasonTitle)
+		if sTitle == "" {
+			sTitle = fmt.Sprintf("Season %d", req.SeasonNumber)
+		}
+		newSeason := model.SeasonData{
+			Season:        req.SeasonNumber,
+			Title:         sTitle,
+			TotalEpisodes: 0,
+			Episodes:      []model.EpisodeData{},
+		}
+		targetAnime.Seasons = append(targetAnime.Seasons, newSeason)
+		seasonIdx = len(targetAnime.Seasons) - 1
+	} else if strings.TrimSpace(req.SeasonTitle) != "" {
+		targetAnime.Seasons[seasonIdx].Title = strings.TrimSpace(req.SeasonTitle)
+	}
+
+	targetSeason := &targetAnime.Seasons[seasonIdx]
+
+	// 3. Add or overwrite episodes
+	for _, epItem := range req.Episodes {
+		cleanURL := strings.TrimSpace(epItem.URL)
+		found := false
+		for i := range targetSeason.Episodes {
+			if targetSeason.Episodes[i].Number == epItem.Number {
+				// Overwrite existing episode URL as requested
+				targetSeason.Episodes[i].URL = cleanURL
+				found = true
+				break
+			}
+		}
+		if !found {
+			targetSeason.Episodes = append(targetSeason.Episodes, model.EpisodeData{
+				Number: epItem.Number,
+				URL:    cleanURL,
+			})
+		}
+	}
+
+	// 4. Sort episodes ascending
+	sort.Slice(targetSeason.Episodes, func(i, j int) bool {
+		return targetSeason.Episodes[i].Number < targetSeason.Episodes[j].Number
+	})
+
+	if len(targetSeason.Episodes) > targetSeason.TotalEpisodes {
+		targetSeason.TotalEpisodes = len(targetSeason.Episodes)
+	}
+
+	// 5. Sort seasons ascending
+	sort.Slice(targetAnime.Seasons, func(i, j int) bool {
+		return targetAnime.Seasons[i].Season < targetAnime.Seasons[j].Season
+	})
+
+	// 6. Persist to disk atomically
+	if err := cs.saveToFileLocked(); err != nil {
+		return nil, fmt.Errorf("failed to save catalog: %w", err)
+	}
+
+	// 7. Return detailed anime snapshot
+	return cs.getAnimeDetailLocked(targetAnime.ID)
 }
 
 // FindEpisode finds the specific episode URL and title

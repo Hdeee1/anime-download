@@ -47,6 +47,10 @@ const API = {
     return this.post('/api/anime/reload');
   },
 
+  async importAnime(payload) {
+    return this.post('/api/anime', payload);
+  },
+
   // Download Endpoints
   async enqueueDownloads(animeId, seasonNumber, episodeNumbers) {
     return this.post('/api/downloads', {
