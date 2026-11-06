@@ -95,6 +95,99 @@ document.addEventListener('DOMContentLoaded', () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
+  // Helper: Anime Thumbnail Service (AniList GraphQL with localStorage Cache & Fallback)
+  const AnimeThumbnailService = {
+    cachePrefix: 'anime_poster_',
+    inFlight: new Map(),
+
+    getPosterUrl(title) {
+      if (!title) return Promise.resolve(null);
+      const cleanTitle = title.trim();
+      const cacheKey = this.cachePrefix + cleanTitle.toLowerCase();
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        return Promise.resolve(cached);
+      }
+
+      if (this.inFlight.has(cleanTitle)) {
+        return this.inFlight.get(cleanTitle);
+      }
+
+      const query = `
+        query ($search: String) {
+          Media (search: $search, type: ANIME) {
+            coverImage {
+              large
+              medium
+            }
+          }
+        }
+      `;
+
+      const promise = fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          query: query,
+          variables: { search: cleanTitle },
+        }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('AniList response not OK');
+          return res.json();
+        })
+        .then((data) => {
+          const cover = data?.data?.Media?.coverImage?.large || data?.data?.Media?.coverImage?.medium;
+          if (cover) {
+            try {
+              localStorage.setItem(cacheKey, cover);
+            } catch (e) {
+              // Ignore potential localStorage quota errors
+            }
+            return cover;
+          }
+          return null;
+        })
+        .catch((err) => {
+          console.warn('[ThumbnailService] Error fetching poster for', cleanTitle, err);
+          return null;
+        })
+        .finally(() => {
+          this.inFlight.delete(cleanTitle);
+        });
+
+      this.inFlight.set(cleanTitle, promise);
+      return promise;
+    },
+
+    bindImage(imgElement, title) {
+      if (!imgElement) return;
+      imgElement.src = '/static/images/poster-placeholder.svg';
+      imgElement.classList.remove('loaded');
+
+      this.getPosterUrl(title).then((url) => {
+        if (url) {
+          const preload = new Image();
+          preload.onload = () => {
+            imgElement.src = url;
+            imgElement.classList.add('loaded');
+          };
+          preload.onerror = () => {
+            imgElement.src = '/static/images/poster-placeholder.svg';
+            imgElement.classList.add('loaded');
+          };
+          preload.src = url;
+        } else {
+          imgElement.src = '/static/images/poster-placeholder.svg';
+          imgElement.classList.add('loaded');
+        }
+      });
+    },
+  };
+
   // Load Initial Anime Catalog
   async function loadCatalog() {
     try {
@@ -186,28 +279,36 @@ document.addEventListener('DOMContentLoaded', () => {
           : 0;
 
       card.innerHTML = `
-        <div>
-          <div class="card-header">
-            <h2 class="card-title">${escapeHtml(anime.title)}</h2>
-          </div>
-          <div class="card-meta">
-            <span class="badge badge-purple">${anime.totalSeasons} Season</span>
-            <span class="badge badge-cyan">${anime.totalEpisodes} Episode Total</span>
-            <span class="badge ${progressPercent === 100 && anime.totalEpisodes > 0 ? 'badge-emerald' : 'badge-amber'}">
-              ${anime.downloadedEpisodes} / ${anime.totalEpisodes} Terunduh
-            </span>
-          </div>
+        <div class="anime-card-poster">
+          <img class="card-poster-img" alt="${escapeHtml(anime.title)}">
         </div>
-        <div>
-          <div class="card-progress-bar">
-            <div class="card-progress-fill" style="width: ${progressPercent}%;"></div>
+        <div class="anime-card-content">
+          <div>
+            <div class="card-header">
+              <h2 class="card-title" title="${escapeHtml(anime.title)}">${escapeHtml(anime.title)}</h2>
+            </div>
+            <div class="card-meta">
+              <span class="badge badge-slate">${anime.totalSeasons} Season</span>
+              <span class="badge badge-slate">${anime.totalEpisodes} Episode Total</span>
+              <span class="badge ${progressPercent === 100 && anime.totalEpisodes > 0 ? 'badge-emerald' : 'badge-amber'}">
+                ${anime.downloadedEpisodes} / ${anime.totalEpisodes} Terunduh
+              </span>
+            </div>
           </div>
-          <div class="card-footer">
-            <span>Progress Unduhan</span>
-            <span style="font-family: var(--font-mono); font-weight: 600;">${progressPercent}%</span>
+          <div>
+            <div class="card-progress-bar">
+              <div class="card-progress-fill ${progressPercent === 100 && anime.totalEpisodes > 0 ? 'complete' : ''}" style="width: ${progressPercent}%;"></div>
+            </div>
+            <div class="card-footer">
+              <span>Status Arsip</span>
+              <span style="font-family: var(--font-mono); font-weight: 600;">${progressPercent}%</span>
+            </div>
           </div>
         </div>
       `;
+
+      const posterImg = card.querySelector('.card-poster-img');
+      AnimeThumbnailService.bindImage(posterImg, anime.title);
 
       card.addEventListener('click', () => openAnimeDetail(anime.id));
       animeGrid.appendChild(card);
@@ -227,6 +328,12 @@ document.addEventListener('DOMContentLoaded', () => {
       breadcrumbTitle.textContent = detail.title;
       detailAnimeTitle.textContent = detail.title;
 
+      // Update detail hero poster
+      const detailHeroPoster = document.getElementById('detailHeroPoster');
+      if (detailHeroPoster) {
+        AnimeThumbnailService.bindImage(detailHeroPoster, detail.title);
+      }
+
       // Calculate total episodes and downloaded
       let totalEps = 0;
       let totalDownloaded = 0;
@@ -236,8 +343,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       heroBadges.innerHTML = `
-        <span class="badge badge-purple">${detail.seasons.length} Seasons</span>
-        <span class="badge badge-cyan">${totalEps} Total Episode</span>
+        <span class="badge badge-slate">${detail.seasons.length} Seasons</span>
+        <span class="badge badge-slate">${totalEps} Total Episode</span>
         <span class="badge ${totalDownloaded === totalEps && totalEps > 0 ? 'badge-emerald' : 'badge-amber'}">
           ${totalDownloaded} / ${totalEps} Terunduh di Komputer
         </span>
@@ -721,6 +828,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Navigation & Toolbar Event Listeners
+  const navLogo = document.getElementById('navLogo');
+  if (navLogo) {
+    navLogo.addEventListener('click', () => {
+      if (detailView.classList.contains('active')) {
+        detailView.classList.remove('active');
+        catalogView.classList.add('active');
+        breadcrumbBar.style.display = 'none';
+        state.currentAnime = null;
+        loadCatalog();
+      }
+    });
+  }
+
   btnBackHome.addEventListener('click', () => {
     detailView.classList.remove('active');
     catalogView.classList.add('active');
