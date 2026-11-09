@@ -1,19 +1,18 @@
 # Architectural Decision Records (ADR)
 
-## ADR-001: Modularisasi Frontend Menggunakan Native ES Modules
+## ADR-001: Modularize Frontend Using Native ES Modules
 
-- **Status:** Diterima & Diimplementasikan
-- **Tanggal:** 2026-11-09
-- **Konteks:**
-  Frontend SPA sebelumnya ditulis di dalam berkas monolitik `web/static/js/app.js` yang mencapai 1.233 baris dan objek global `window.API` di `web/static/js/api.js`. Berkas ini mencampurkan state store, utilities, service AniList GraphQL, view rendering, sistem toast, SSE event listeners, dan form wizard import modal. Hal ini meningkatkan risiko regresi saat menambahkan fitur baru.
-- **Keputusan:**
-  Memecah kode frontend menjadi Native ECMAScript Modules (ESM) terpisah (`services/`, `components/`, `utils.js`, `state.js`, `api.js`) dan dieksekusi langsung oleh browser melalui `<script type="module" src="/static/js/app.js"></script>`.
-- **Konsekuensi:**
-  - **Positif:**
-    - Pemisahan tanggung jawab (*Separation of Concerns*) yang jelas dan modular.
-    - Ukuran `app.js` berkurang drastis menjadi ~150 baris sebagai orchestrator.
-    - Mempertahankan filosofi nol dependensi eksternal (*zero node_modules/bundlers*) sesuai `AGENTS.md`.
-    - Modul dapat di-cache secara independen oleh HTTP cache browser.
-  - **Negatif / Trade-off:**
-    - Membutuhkan browser modern yang mendukung Native ES Modules (sudah didukung oleh 99%+ browser sejak 2018).
-
+- **Status:** Accepted & Implemented
+- **Date:** 2026-11-09
+- **Context:**
+  The frontend Single Page Application (SPA) was previously authored in a single monolithic file `web/static/js/app.js` spanning 1,233 lines alongside a global `window.API` object in `web/static/js/api.js`. This mixed application state, DOM utilities, third-party AniList GraphQL queries, view rendering, toast notifications, SSE stream lifecycle, and modal import form logic in one closure, increasing regression risk when adding new features.
+- **Decision:**
+  Decompose frontend logic into self-contained Native ECMAScript Modules (ESM) (`services/`, `components/`, `utils.js`, `state.js`, `api.js`) served directly to modern browsers using `<script type="module" src="/static/js/app.js"></script>`.
+- **Consequences:**
+  - **Positive:**
+    - Clean separation of concerns with isolated component scopes.
+    - Reduced `app.js` footprint to ~150 lines as a pure orchestrator.
+    - Preserved zero-dependency build architecture (*no node_modules, no bundlers*) adhering to project guidelines.
+    - Enables per-module HTTP browser caching.
+  - **Negative / Trade-off:**
+    - Requires a modern browser supporting Native ES Modules (supported by >99% of global browsers since 2018).

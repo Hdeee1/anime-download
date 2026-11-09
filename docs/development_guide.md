@@ -1,49 +1,49 @@
-# Panduan Pengembangan (Development Guide)
+# Developer Guide
 
-Panduan ini ditujukan bagi developer untuk memahami cara menjalankan, menguji, dan mengembangkan fitur-fitur baru pada **Anime Batch Downloader**.
-
----
-
-## 1. Prasyarat Lingkungan
-
-* **Go**: Versi 1.22 atau lebih baru.
-* **Make**: GNU Make (opsional, untuk menjalankan target build).
-* **Browser**: Modern web browser dengan dukungan HTML5 & EventSource (Chrome, Firefox, Safari, Edge).
+This guide is intended for developers to understand how to run, test, and build new features for **Anime Batch Downloader**.
 
 ---
 
-## 2. Konfigurasi Lingkungan (.env & Environment Variables)
+## 1. Environment Prerequisites
 
-Aplikasi secara otomatis membaca berkas `.env` saat pertama kali dijalankan. Salin berkas `.env.example` ke `.env` untuk mengatur konfigurasi Anda secara aman:
+* **Go**: Version 1.22 or newer.
+* **Make**: GNU Make (optional, for running build targets).
+* **Browser**: Modern web browser supporting HTML5 & EventSource (Chrome, Firefox, Safari, Edge).
+
+---
+
+## 2. Environment Configuration (.env & Environment Variables)
+
+The application automatically reads the local `.env` file on startup. Copy `.env.example` to `.env` to configure your environment safely:
 
 ```bash
 cp .env.example .env
 ```
 
-| Variabel | Default | Keterangan |
+| Variable | Default | Description |
 | :--- | :--- | :--- |
-| `PORT` | `8080` | Port HTTP tempat server mendengarkan koneksi. |
-| `STORAGE_PATH` | `./downloads` | Direktori lokal root untuk penyimpanan video hasil unduhan. |
-| `CATALOG_PATH` | `./anime_list.json` | Path ke berkas JSON sumber katalog anime. |
+| `PORT` | `8080` | HTTP port where the server listens for connections. |
+| `STORAGE_PATH` | `./downloads` | Root directory on the local filesystem for downloaded videos. |
+| `CATALOG_PATH` | `./anime_list.json` | Path to the JSON catalog file. |
 
 > [!TIP]
-> Berkas `.env` telah dimasukkan ke `.gitignore` sehingga path lokal dan konfigurasi pribadi Anda tidak akan pernah tersebar ke repository publik.
+> The `.env` file is excluded via `.gitignore` so your personal local directory paths and configurations remain private.
 
-### Contoh Menjalankan dengan Variabel Kustom Langsung:
+### Running with Custom Inline Environment Variables:
 ```bash
 PORT=9000 STORAGE_PATH="/media/hdd/Anime" CATALOG_PATH="./data.json" ./bin/anime-downloader
 ```
 
 ---
 
-## 3. Menambahkan Anime Baru ke Katalog
+## 3. Adding New Anime to the Catalog
 
-1. Buka berkas `anime_list.json` di text editor favorit Anda.
-2. Tambahkan objek anime baru mengikuti struktur berikut:
+1. Open `anime_list.json` in your favorite editor.
+2. Add a new anime object following this schema:
 ```json
 {
-  "id": "judul-anime-kebab-case",
-  "title": "Judul Anime",
+  "id": "anime-title-kebab-case",
+  "title": "Anime Title",
   "seasons": [
     {
       "season": 1,
@@ -59,51 +59,52 @@ PORT=9000 STORAGE_PATH="/media/hdd/Anime" CATALOG_PATH="./data.json" ./bin/anime
   ]
 }
 ```
-3. Simpan berkas, lalu di antarmuka web, klik tombol **"Reload Data"** di header navbar. Data baru akan langsung muncul tanpa perlu me-restart server Go.
+3. Save the file, then click the **"Reload Data"** button in the web navigation bar. The new entries will appear immediately without requiring a Go server restart.
+> Alternatively, you can use the **"+ Import / Add"** modal directly from the web interface to add anime or episodes via the REST API.
 
 ---
 
-## 4. Perintah Pengembangan (Makefile)
+## 4. Development Commands (Makefile)
 
-Gunakan perintah make berikut:
+Use the provided `Makefile` commands:
 
 ```bash
-# Melakukan kompilasi kode ke bin/anime-downloader
+# Compile binary to bin/anime-downloader
 make build
 
-# Mengkompilasi dan langsung menjalankan server
+# Compile and immediately run the server
 make run
 
-# Menjalankan seluruh pengujian unit
+# Run all unit tests
 make test
 
-# Menghapus output kompilasi di folder bin/
+# Remove build outputs in bin/
 make clean
 ```
 
 ---
 
-## 5. Menulis Pengujian (Testing Guidelines)
+## 5. Testing Guidelines
 
-* **Unit Test Katalog**: Simpan di `internal/catalog/*_test.go`. Pastikan menguji pembacaan JSON, penanganan season kosong, dan pemetaan path lokal.
-* **Unit Test Downloader**: Simpan di `internal/downloader/*_test.go`. Pastikan menguji antrean, batas worker, dan pembatalan (*cancel context*).
+* **Catalog Unit Tests**: Stored under `internal/catalog/*_test.go`. Ensure tests verify JSON parsing, handling of empty seasons, and local storage path sanitization.
+* **Downloader Unit Tests**: Stored under `internal/downloader/*_test.go`. Ensure tests verify FIFO queuing, worker capacity limits, atomic `.part` renaming, and context cancellation.
 
-Untuk menjalankan pengujian dengan detail output:
+To execute tests with verbose race detection:
 ```bash
 go test -v -race ./...
 ```
 
 ---
 
-## 6. Roadmap Ide Fitur Masa Depan (Post-MVP)
+## 6. Post-MVP Feature Roadmap
 
-Jika Anda ingin melanjutkan pengembangan di masa depan, berikut beberapa peningkatan yang telah dirancang untuk mudah diintegrasikan:
+The following enhancements are prioritized for future iterations:
 
-1. **Resume Partial Download**:
-   - Manfaatkan header HTTP `Range: bytes=offset-` jika server CDN mendukungnya, sehingga file `.part` yang terputus dapat dilanjutkan tanpa mengulang dari 0%.
-2. **Pengaturan Concurrency Dinamis**:
-   - Menyediakan slider di UI (misal: 1 s.d. 4 worker) yang dapat disetel pengguna sesuai kondisi kecepatan internet.
-3. **Form UI Input / Import Link**:
-   - Modal input untuk menempelkan teks daftar link download sekaligus, lalu backend otomatis mengekstrak nomor episode dan menyimpannya ke `anime_list.json`.
-4. **Embedded Video Player**:
-   - Untuk episode yang sudah berstatus *"Downloaded"*, sediakan tombol play yang memutar video langsung di browser menggunakan tag `<video>` lokal.
+1. **Partial Download Resume**:
+   - Utilize HTTP `Range: bytes=offset-` headers when supported by the CDN, allowing interrupted `.part` files to resume without restarting from 0%.
+2. **Dynamic Concurrency Control**:
+   - Provide a UI control (e.g., 1 to 4 workers) so users can adjust parallel downloads according to local bandwidth conditions.
+3. **Embedded Video Player**:
+   - For episodes marked *"Downloaded"*, provide an in-browser HTML5 `<video>` modal player to verify and watch videos without switching to an external player.
+4. **Link Import / Bulk Ingestion**:
+   - Modal input parsing bulk text link lists, automatically extracting episode numbers and persisting them to `anime_list.json`.

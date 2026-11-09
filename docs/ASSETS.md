@@ -1,9 +1,8 @@
 # External Assets & Licensing Register
 
-Daftar aset eksternal dan sumber data pihak ketiga yang digunakan dalam proyek ini sesuai dengan ketentuan `.agents/rules/02-assets-licensing.md`.
+Register of external assets and third-party data sources used in this project in compliance with asset licensing guidelines.
 
-| Nama | Jenis | Sumber (URL) | Lisensi | Atribusi diperlukan | Tanggal | Dipakai di |
+| Name | Type | Source (URL) | License | Attribution Required | Date | Used In |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **AniList GraphQL API (Cover Art)** | API & Metadata Media | https://graphql.anilist.co | Public API / Fair Use (Promotional Anime Covers) | Tidak | 2026-11-06 | `web/static/js/app.js` (Thumbnail card anime & hero banner) |
-| **Studio Poster Placeholder** | Vektor SVG Lokal | Dibuat internal (`web/static/images/poster-placeholder.svg`) | CC0 (Public Domain Dedication) | Tidak | 2026-11-06 | `web/static/images/poster-placeholder.svg` (Fallback gambar offline) |
-
+| **AniList GraphQL API (Cover Art)** | Media Metadata & API | https://graphql.anilist.co | Public API / Fair Use (Promotional Anime Covers) | No | 2026-11-06 | `web/static/js/services/thumbnail.js` (Anime card thumbnails & hero banner) |
+| **Studio Poster Placeholder** | Local SVG Vector | Created internally (`web/static/images/poster-placeholder.svg`) | CC0 (Public Domain Dedication) | No | 2026-11-06 | `web/static/images/poster-placeholder.svg` (Offline image fallback) |

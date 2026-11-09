@@ -1,12 +1,12 @@
-# Dokumentasi Kontrak API: Anime Batch Downloader
+# API Contract Documentation: Anime Batch Downloader
 
-Dokumen ini mendefinisikan kontrak komunikasi antara Frontend SPA dan Backend Go Monolith.
+This document defines the communication contract between the Single Page Application (SPA) frontend and the Go Monolith backend.
 
 ---
 
-## 1. Format Respons Standar
+## 1. Standard Response Envelope
 
-Seluruh endpoint REST API menggunakan format amplop JSON standar:
+All REST API endpoints use a uniform JSON response envelope:
 
 ```json
 {
@@ -16,27 +16,27 @@ Seluruh endpoint REST API menggunakan format amplop JSON standar:
 }
 ```
 
-Jika terjadi error, field `success` bernilai `false`, `data` bernilai `null`, dan `error` berisi pesan error:
+If an error occurs, `success` evaluates to `false`, `data` is `null`, and `error` contains the descriptive error string:
 
 ```json
 {
   "success": false,
   "data": null,
-  "error": "Pesan deskripsi kesalahan"
+  "error": "Descriptive error message"
 }
 ```
 
 ---
 
-## 2. Endpoints Katalog Anime
+## 2. Anime Catalog Endpoints
 
 ### 2.1 `GET /api/anime`
-Mengambil ringkasan seluruh serial anime untuk tampilan kartu (Cards) di halaman utama.
+Retrieves a summary list of all anime series for grid card rendering on the home view.
 
 * **Method**: `GET`
-* **Query Parameters**: Tidak ada
-* **Status Response**: `200 OK`
-* **Contoh Response**:
+* **Query Parameters**: None
+* **Status Code**: `200 OK`
+* **Example Response**:
 ```json
 {
   "success": true,
@@ -63,12 +63,12 @@ Mengambil ringkasan seluruh serial anime untuk tampilan kartu (Cards) di halaman
 ---
 
 ### 2.2 `GET /api/anime/{id}`
-Mengambil detail satu anime beserta seluruh season, daftar episode, dan status keberadaan fisik file di storage lokal.
+Retrieves detailed information for a single anime including all seasons, episode lists, and physical disk availability status.
 
 * **Method**: `GET`
-* **Path Parameter**: `id` (contoh: `kusuriya-no-hitorigoto`)
-* **Status Response**: `200 OK` atau `404 Not Found`
-* **Contoh Response**:
+* **Path Parameter**: `id` (e.g., `kusuriya-no-hitorigoto`)
+* **Status Code**: `200 OK` or `404 Not Found`
+* **Example Response**:
 ```json
 {
   "success": true,
@@ -114,7 +114,7 @@ Mengambil detail satu anime beserta seluruh season, daftar episode, dan status k
 ---
 
 ### 2.3 `POST /api/anime`
-Menambahkan anime baru, season baru, atau episode baru secara langsung ke katalog dan menyimpannya secara atomik ke `anime_list.json`. Jika nomor episode yang diinput sudah ada pada season bersangkutan, URL akan otomatis di-overwrite.
+Creates a new anime series, appends a new season, or adds episodes directly to the catalog, persisting changes atomically to `anime_list.json`. If an episode number already exists in the given season, its URL is overwritten.
 
 * **Method**: `POST`
 * **Request Header**: `Content-Type: application/json`
@@ -133,18 +133,18 @@ Menambahkan anime baru, season baru, atau episode baru secara langsung ke katalo
   ]
 }
 ```
-* **Status Response**: `201 Created` atau `400 Bad Request`
-* **Contoh Response**: Mengembalikan objek `AnimeDetail` terbaru.
+* **Status Code**: `201 Created` or `400 Bad Request`
+* **Example Response**: Returns the updated `AnimeDetail` object.
 
 ---
 
 ### 2.4 `POST /api/anime/reload`
-Memuat ulang berkas `anime_list.json` dari disk tanpa perlu me-restart server Go.
+Reloads the `anime_list.json` file from disk into server memory without restarting the Go process.
 
 * **Method**: `POST`
-* **Request Body**: Kosong
-* **Status Response**: `200 OK`
-* **Contoh Response**:
+* **Request Body**: Empty
+* **Status Code**: `200 OK`
+* **Example Response**:
 ```json
 {
   "success": true,
@@ -158,10 +158,10 @@ Memuat ulang berkas `anime_list.json` dari disk tanpa perlu me-restart server Go
 
 ---
 
-## 3. Endpoints Download Manager
+## 3. Download Manager Endpoints
 
 ### 3.1 `POST /api/downloads`
-Mendaftarkan satu atau banyak episode ke antrean download (batch download).
+Enqueues one or multiple episodes into the batch download FIFO queue.
 
 * **Method**: `POST`
 * **Request Header**: `Content-Type: application/json`
@@ -173,8 +173,8 @@ Mendaftarkan satu atau banyak episode ke antrean download (batch download).
   "episodeNumbers": [2, 3, 4]
 }
 ```
-* **Status Response**: `202 Accepted`
-* **Contoh Response**:
+* **Status Code**: `202 Accepted`
+* **Example Response**:
 ```json
 {
   "success": true,
@@ -204,11 +204,11 @@ Mendaftarkan satu atau banyak episode ke antrean download (batch download).
 ---
 
 ### 3.2 `GET /api/downloads`
-Mendapatkan daftar seluruh job unduhan yang sedang berjalan, mengantre, atau baru saja selesai.
+Returns the status of all active, queued, or recently finished download jobs.
 
 * **Method**: `GET`
-* **Status Response**: `200 OK`
-* **Contoh Response**:
+* **Status Code**: `200 OK`
+* **Example Response**:
 ```json
 {
   "success": true,
@@ -239,14 +239,14 @@ Mendapatkan daftar seluruh job unduhan yang sedang berjalan, mengantre, atau bar
 ---
 
 ### 3.3 `DELETE /api/downloads/{jobId}`
-Membatalkan proses unduhan.
-- Jika job sedang aktif berjalan: HTTP connection streaming langsung diputus seketika, dan file sementara `.part` dihapus dari disk.
-- Jika job masih di antrean: Job ditandai `CANCELED` dan diabaikan saat giliran tiba.
+Cancels an ongoing or queued download job.
+- If the job is currently streaming: The HTTP stream connection is terminated immediately, and the temporary `.part` file is unlinked from disk.
+- If the job is queued: The job is marked as `CANCELED` and bypassed when pulled by workers.
 
 * **Method**: `DELETE`
 * **Path Parameter**: `jobId`
-* **Status Response**: `200 OK` (atau `404 Not Found`)
-* **Contoh Response**:
+* **Status Code**: `200 OK` (or `404 Not Found`)
+* **Example Response**:
 ```json
 {
   "success": true,
@@ -263,9 +263,9 @@ Membatalkan proses unduhan.
 ## 4. Server-Sent Events (SSE) Stream
 
 ### Endpoint: `GET /api/downloads/events`
-Koneksi streaming satu arah (unidirectional) dari server Go ke frontend browser untuk memberikan pembaruan status real-time tanpa polling berulang.
+A unidirectional real-time streaming connection from the Go backend to browser clients via `text/event-stream`.
 
-* **Headers Response**:
+* **Response Headers**:
   * `Content-Type: text/event-stream`
   * `Cache-Control: no-cache`
   * `Connection: keep-alive`
@@ -273,35 +273,35 @@ Koneksi streaming satu arah (unidirectional) dari server Go ke frontend browser 
 ### Event Types:
 
 #### 1. `event: progress`
-Dipancarkan setiap ~500ms selama streaming download berjalan aktif.
+Emitted every ~500ms while an active download is streaming.
 ```http
 event: progress
 data: {"jobId":"job-kusuriya-no-hitorigoto-s01e02-482910","animeId":"kusuriya-no-hitorigoto","season":1,"episode":2,"status":"DOWNLOADING","progress":52.4,"downloadedBytes":234128000,"totalBytes":447283200,"speed":"4.2 MB/s"}
 ```
 
 #### 2. `event: completed`
-Dipancarkan setelah file tuntas 100% dan berhasil di-rename atomik ke ekstensi `.mp4`.
+Emitted once the video file is 100% verified and atomically renamed to `.mp4`.
 ```http
 event: completed
 data: {"jobId":"job-kusuriya-no-hitorigoto-s01e02-482910","animeId":"kusuriya-no-hitorigoto","season":1,"episode":2,"filename":"Kusuriya no Hitorigoto - S01E02.mp4","fileSize":447283200}
 ```
 
 #### 3. `event: failed`
-Dipancarkan jika terjadi kegagalan koneksi atau error I/O.
+Emitted when network disconnection or I/O failure occurs.
 ```http
 event: failed
 data: {"jobId":"job-kusuriya-no-hitorigoto-s01e02-482910","animeId":"kusuriya-no-hitorigoto","season":1,"episode":2,"error":"connection reset by peer"}
 ```
 
 #### 4. `event: canceled`
-Dipancarkan saat pengguna membatalkan job melalui tombol batal.
+Emitted when the user cancels the job via the UI.
 ```http
 event: canceled
 data: {"jobId":"job-kusuriya-no-hitorigoto-s01e02-482910","animeId":"kusuriya-no-hitorigoto","season":1,"episode":2}
 ```
 
 #### 5. `event: enqueued`
-Dipancarkan saat job baru didaftarkan ke antrean.
+Emitted when a new download job is enqueued.
 ```http
 event: enqueued
 data: {"jobId":"job-kusuriya-no-hitorigoto-s01e03-482911","animeId":"kusuriya-no-hitorigoto","season":1,"episode":3,"filename":"Kusuriya no Hitorigoto - S01E03.mp4","status":"QUEUED"}

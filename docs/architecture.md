@@ -1,15 +1,15 @@
-# Arsitektur Sistem: Anime Batch Downloader
+# System Architecture: Anime Batch Downloader
 
-Dokumen ini menjelaskan arsitektur teknis, desain komponen, dan keputusan rekayasa di balik aplikasi **Anime Batch Downloader**.
+This document details the technical architecture, component design, and engineering decisions behind the **Anime Batch Downloader** application.
 
 ---
 
-## 1. Diagram Arsitektur Komponen
+## 1. Component Architecture Diagram
 
 ```mermaid
 graph TD
     subgraph Client [Frontend Browser - Native ES Modules SPA]
-        UI[Antarmuka Web: HTML5 / CSS3]
+        UI[Web Interface: HTML5 / CSS3]
         AppOrch[app.js - Orchestrator & SSE Dispatcher]
         StateStore[state.js - Central State Store]
         UIComp[components/ - Catalog, Detail, Tray, Modal]
@@ -37,12 +37,12 @@ graph TD
         end
     end
 
-    subgraph Storage [Filesystem Lokal]
+    subgraph Storage [Local Filesystem]
         JSONFile[(anime_list.json)]
-        VideoDisk[(STORAGE_PATH / Direktori Video)]
+        VideoDisk[(STORAGE_PATH / Video Directory)]
     end
 
-    subgraph Remote [Penyedia Video Luar]
+    subgraph Remote [External Video Provider]
         CDN[Direct MP4 Storage Server]
     end
     APIClient -->|REST Calls| Router
@@ -68,52 +68,52 @@ graph TD
 
 ---
 
-## 2. Tanggung Jawab Komponen
+## 2. Component Responsibilities
 
 ### 2.1 `internal/catalog` (Catalog Service)
-- Membaca berkas `anime_list.json` dan memetakannya ke struktur Go secara aman (*thread-safe* menggunakan `sync.RWMutex`).
-- Bertanggung jawab memindai direktori disk lokal (`os.Stat`) untuk mendeteksi apakah suatu file video sudah ada atau belum (`isDownloaded: true/false`).
-- Menstandardisasi struktur folder dan penamaan file:
+- Reads `anime_list.json` and maps it to Go data models safely (*thread-safe* using `sync.RWMutex`).
+- Scans local disk directories (`os.Stat`) to detect whether a video file already exists (`isDownloaded: true/false`).
+- Standardizes directory hierarchy and file naming conventions:
   - Folder: `<Base Storage>/<Anime Title>/Season <N>/`
-  - Nama File: `<Anime Title> - S<0N>E<0N>.mp4`
-- Mendukung fitur *Reload* tanpa perlu restart server.
+  - Filename: `<Anime Title> - S<0N>E<0N>.mp4`
+- Supports hot *Reload* capabilities without requiring a server restart.
 
 ### 2.2 `internal/downloader` (Download Engine)
-Download Engine dirancang untuk keandalan jaringan lokal dan pencegahan ban dari CDN penyedia:
+The download engine is designed for local network stability and protection against CDN rate-limit bans:
 - **`WorkerPool`**:
-  - Mengelola kapasitas worker tetap (**2 unduhan aktif serentak**).
-  - Menggunakan channel buffer Go sebagai FIFO Job Queue berkapasitas 500 item.
-  - Memetakan fungsi pembatalan per-job menggunakan `context.CancelFunc`.
+  - Manages fixed worker capacity (**2 concurrent active downloads**).
+  - Uses a buffered Go channel as a FIFO Job Queue with a capacity of 500 items.
+  - Maps per-job cancellation functions using `context.CancelFunc`.
 - **`Worker` (Streaming & Atomic File Writing)**:
-  - Melakukan HTTP streaming dengan buffer 64KB.
-  - Menghitung kecepatan rata-rata (*transfer speed*) dan persentase progress setiap 500ms.
-  - **Integritas File**: File ditulis ke file sementara `<Filename>.mp4.part`. Hanya setelah stream HTTP tuntas 100% dengan EOF, file di-rename atomik ke ekstensi `.mp4`.
-  - Jika terjadi pembatalan (*cancel*) atau putus jaringan, file `.part` langsung dihapus agar tidak menyisakan file korup di disk.
+  - Performs HTTP streaming using a 64KB buffer.
+  - Computes transfer speed and progress percentages every 500ms.
+  - **File Integrity**: Data is written to a temporary `<Filename>.mp4.part` file. Only after the HTTP stream reaches 100% completion with EOF is the file atomically renamed to `.mp4`.
+  - In case of cancellation (*Cancel*) or network disconnection, the `.part` file is immediately deleted to avoid leaving corrupted files on disk.
 - **`SSEHub`**:
-  - Mendistribusikan event real-time (`progress`, `completed`, `failed`, `canceled`, `enqueued`) ke seluruh browser client yang terhubung via `text/event-stream`.
+  - Distributes real-time events (`progress`, `completed`, `failed`, `canceled`, `enqueued`) to all connected browser clients via `text/event-stream`.
 
 ### 2.3 `internal/handler` (HTTP Layer)
-- Menerjemahkan request HTTP ke pemanggilan service dan menghasilkan response JSON yang konsisten.
-- Endpoint SSE menggunakan `http.Flusher` untuk memastikan setiap event terkirim seketika tanpa tertahan buffer web server.
+- Translates HTTP requests into service calls and returns uniform JSON responses.
+- SSE endpoints leverage `http.Flusher` to ensure each event is pushed immediately without being buffered by the web server.
 
 ### 2.4 `web/` (Frontend Layer)
-- Dibangun dengan **Vanilla HTML, CSS, dan JavaScript Native ES Modules (ESM)** tanpa dependensi `node_modules` atau bundler (Webpack/Vite).
-- Arsitektur berbasis modul terisolasi:
-  - **`app.js` (Orchestrator)**: Titik masuk aplikasi, inisialisasi modul komponen, setup listener SSE real-time, dan navigasi view.
-  - **`state.js`**: Reaktif in-memory central state store (`animeList`, `currentAnime`, `activeJobs`).
-  - **`api.js`**: Klien fetch REST dan pembungkus EventSource Server-Sent Events.
-  - **`services/`**: Layanan terisolasi seperti `thumbnail.js` (AniList GraphQL API + localStorage cache) dan `toast.js` (notifikasi UI).
-  - **`components/`**: Komponen modular independen (`catalog-view.js`, `detail-view.js`, `download-tray.js`, `import-modal.js`).
-  - **`utils.js`**: Fungsi pembantu murni (`escapeHtml`, `formatBytes`).
-- Memiliki laci status mengambang (*Download Tray*) yang memantau progres unduhan secara real-time via SSE.
+- Built with **Vanilla HTML, CSS, and JavaScript Native ES Modules (ESM)** without `node_modules` or bundlers (Webpack/Vite).
+- Modular component-based architecture:
+  - **`app.js` (Orchestrator)**: Application entry point, component initializer, real-time SSE event dispatcher, and view router.
+  - **`state.js`**: Reactive in-memory central state store (`animeList`, `currentAnime`, `activeJobs`).
+  - **`api.js`**: REST fetch client and EventSource Server-Sent Events wrapper.
+  - **`services/`**: Isolated services such as `thumbnail.js` (AniList GraphQL API + localStorage cache) and `toast.js` (UI notifications).
+  - **`components/`**: Self-contained UI components (`catalog-view.js`, `detail-view.js`, `download-tray.js`, `import-modal.js`).
+  - **`utils.js`**: Pure utility helpers (`escapeHtml`, `formatBytes`).
+- Features a floating drawer (*Download Manager Tray*) that monitors download progress in real time via SSE.
 
 ---
 
-## 3. Kebijakan & Trade-off Desain
+## 3. Design Decisions & Trade-offs
 
-| Keputusan | Alasan / Justifikasi | Trade-off |
+| Decision | Rationale / Justification | Trade-off |
 | :--- | :--- | :--- |
-| **Go Standard Library** | Menghindari *dependency bloat*, performa sangat tinggi, dan memudahkan *maintenance* jangka panjang. | Sedikit lebih manual dalam penanganan routing (diselesaikan dengan fitur Go 1.22 mux). |
-| **Worker Concurrency = 2** | Menghindari saturasi bandwidth rumah tangga dan mencegah pemblokiran IP oleh server penyedia video. | Kecepatan unduh batch bergantung pada antrean sequential, bukan unduhan massal serentak. |
-| **In-Memory Queue (MVP)** | Sangat cepat diimplementasikan dan ringan tanpa perlu setup database SQLite/PostgreSQL. | Jika server dimatikan paksa, antrean aktif hilang; namun file yang sudah tuntas tetap aman di disk. |
-| **Penyimpanan Lokal Disk Langsung** | Mengeliminasi dialog save browser berulang kali dan memungkinkan folder terorganisir otomatis. | Server harus berjalan di mesin yang sama dengan filesystem tujuan. |
+| **Go Standard Library** | Eliminates *dependency bloat*, provides high performance, and simplifies long-term maintenance. | Slightly more manual routing patterns (addressed with Go 1.22 mux enhancements). |
+| **Worker Concurrency = 2** | Prevents residential bandwidth saturation and avoids IP bans from video storage providers. | Batch download speed depends on sequential queue processing rather than mass concurrent downloads. |
+| **In-Memory Queue (MVP)** | Lightweight, zero-config, and rapid to implement without setting up an external database (SQLite/PostgreSQL). | If the server is abruptly terminated, active queue state is lost; however, completed files remain secure on disk. |
+| **Direct Local Disk Storage** | Eliminates repeated browser download prompts and enables automated folder organization. | The backend server must run on the same physical host as the target storage filesystem. |

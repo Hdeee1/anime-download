@@ -1,22 +1,22 @@
 # 🎬 AnimeFlow: Batch Downloader
 
-> Aplikasi web lokal berkinerja tinggi berbasis **Go (Standard Library)** dan **Vanilla Web Technologies** untuk mengelola katalog anime dan mengunduh video direct MP4 secara batch langsung ke direktori komputer Anda.
+> A high-performance local web application built with **Go (Standard Library)** and **Vanilla Web Technologies (Native ES Modules)** for managing anime catalogs and downloading direct MP4 videos in batch directly to your computer's filesystem.
 
 ![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)
 ![Architecture](https://img.shields.io/badge/Architecture-Monolith-8B5CF6?style=flat)
-![Frontend](https://img.shields.io/badge/Frontend-Vanilla_JS_%2B_CSS-F59E0B?style=flat)
+![Frontend](https://img.shields.io/badge/Frontend-Vanilla_ES_Modules-F59E0B?style=flat)
 ![Protocol](https://img.shields.io/badge/Realtime-Server--Sent_Events-10B981?style=flat)
 
 ---
 
-## ✨ Fitur Utama
+## ✨ Key Features
 
-* **⚡ Pengunduh Batch Terkontrol (Worker Pool)**:
-  * Menggunakan sistem antrean FIFO terpusat dengan batasan **2 worker paralel**.
-  * Bandwidth lokal tidak tercekik dan server CDN terhindar dari pemblokiran rate limit.
-* **📂 Struktur Folder & Penamaan Otomatis**:
-  * Menghilangkan kerumitan pop-up browser save file.
-  * File langsung terorganisir rapi di disk lokal (sesuai `STORAGE_PATH` di `.env`):
+* **⚡ Controlled Batch Downloader (Worker Pool)**:
+  * Employs a centralized FIFO job queue with a limit of **2 concurrent workers**.
+  * Prevents local network saturation and avoids rate-limit bans from CDN storage providers.
+* **📂 Automated Folder Hierarchy & Naming**:
+  * Eliminates repetitive browser "Save As" prompts.
+  * Organizes files cleanly on your local disk (configured via `STORAGE_PATH` in `.env`):
     ```
     STORAGE_PATH/
     └── Kusuriya no Hitorigoto/
@@ -24,114 +24,121 @@
             ├── Kusuriya no Hitorigoto - S01E01.mp4
             └── Kusuriya no Hitorigoto - S01E02.mp4
     ```
-* **🛡️ Integritas File Atomik (`.part`)**:
-  * Data diunduh ke file sementara `<Filename>.part`.
-  * Hanya setelah streaming sukses 100%, file di-rename menjadi `.mp4`.
-  * Pembatalan (*Cancel*) atau kegagalan jaringan otomatis membersihkan file sementara agar tidak menyisakan file korup.
-* **📡 Pembaruan Real-Time (Server-Sent Events)**:
-  * Memantau persentase, transfer byte, dan kecepatan unduhan (MB/s) secara langsung tanpa membebani browser dengan polling berulang.
-* **🎨 Tampilan Modern Anime Dark Theme**:
-  * Single Page Application dengan estetika glassmorphism, badge status dinamis (*Downloaded*, *Downloading*, *Queued*, *Coming Soon*), tab season, dan laci mengambang (*Floating Download Manager*).
-* **🔄 Hot-Reload Data Katalog**:
-  * Cukup perbarui berkas `anime_list.json` dan klik tombol **"Reload Data"** di navigasi untuk sinkronisasi instan tanpa me-restart server.
+* **🛡️ Atomic File Integrity (`.part`)**:
+  * Streams incoming video to a temporary `<Filename>.part` file.
+  * Only after the stream completes with 100% byte verification is the file atomically renamed to `.mp4`.
+  * Manual cancellations or connection dropouts automatically clean up partial files, preventing corrupted video files.
+* **📡 Real-Time Progress (Server-Sent Events)**:
+  * Broadcasts percentage, transferred bytes, and real-time transfer speed (MB/s) without browser polling overhead.
+* **🎨 Modern Anime Dark Theme & Native ES Modules**:
+  * Single Page Application featuring a dark glassmorphism aesthetic, dynamic status badges (*Downloaded*, *Downloading*, *Queued*, *Coming Soon*), season tabs, and a floating download manager tray.
+* **🔄 Hot-Reload Catalog Data**:
+  * Simply update the `anime_list.json` file and click **"Reload Data"** in the navigation bar for instant synchronization without restarting the server.
 
 ---
 
-## 🚀 Memulai Cepat (Quick Start)
+## 🚀 Quick Start
 
-### 1. Prasyarat
-* [Go 1.22+](https://go.dev/dl/) terpasang di komputer Anda.
-* Direktori penyimpanan video lokal (diatur melalui `STORAGE_PATH` di `.env`).
+### 1. Prerequisites
+* [Go 1.22+](https://go.dev/dl/) installed on your machine.
+* A target local directory for video storage (configured via `STORAGE_PATH` in `.env`).
 
-### 2. Konfigurasi Lingkungan & Data
-Salin template konfigurasi dan katalog contoh:
+### 2. Environment & Data Configuration
+Copy the environment template and example catalog:
 ```bash
-# Salin konfigurasi environment lokal
+# Copy local environment configuration
 cp .env.example .env
 
-# Salin berkas katalog contoh jika belum memiliki anime_list.json
+# Copy example catalog if you do not have anime_list.json yet
 cp anime_list.example.json anime_list.json
 ```
-> Atur target direktori penyimpanan video pada variabel `STORAGE_PATH` di dalam file `.env`. Berkas `.env` telah diabaikan oleh `.gitignore` sehingga path lokal pribadi Anda tetap aman dan rahasia.
+> Configure your target storage directory using the `STORAGE_PATH` variable inside `.env`. The `.env` file is ignored by `.gitignore` to keep your personal local paths private.
 
-### 3. Kompilasi & Jalankan Server
-Menggunakan **Makefile**:
+### 3. Build & Run Server
+Using **Makefile**:
 ```bash
-# Kompilasi dan langsung jalankan server
+# Compile and immediately run the server
 make run
 ```
-Atau manual menggunakan Go:
+Or manually using Go:
 ```bash
 go build -o bin/anime-downloader .
 ./bin/anime-downloader
 ```
 
-### 4. Buka di Browser
-Akses antarmuka web melalui:
+### 4. Open in Browser
+Access the web interface at:
 👉 **[http://localhost:8080](http://localhost:8080)**
 
 ---
 
-## 🛠️ Struktur Direktori Proyek
+## 🛠️ Project Directory Structure
 
 ```
 anime-download/
-├── bin/                          # Output biner hasil kompilasi (diabaikan git)
+├── bin/                          # Compiled binary output (git-ignored)
 │   └── anime-downloader
-├── docs/                         # Dokumentasi teknis mendalam
-│   ├── api_contract.md           # Spesifikasi REST API & stream Server-Sent Events
-│   ├── architecture.md           # Arsitektur sistem, worker pool, & diagram alur
-│   └── development_guide.md      # Panduan pengembangan & roadmap post-MVP
+├── docs/                         # In-depth technical documentation
+│   ├── api_contract.md           # REST API & Server-Sent Events specifications
+│   ├── architecture.md           # System architecture, worker pool, & data flow
+│   ├── ASSETS.md                 # External asset sourcing and licensing log
+│   ├── DECISIONS.md              # Architectural Decision Records (ADR)
+│   └── development_guide.md      # Developer guide & post-MVP roadmap
 ├── internal/
-│   ├── catalog/                  # Layanan pembaca JSON & pemindai disk fisik
+│   ├── catalog/                  # JSON catalog service & physical disk scanner
 │   │   ├── catalog.go
-│   │   └── catalog_test.go       # Unit test catalog & storage mapper
-│   ├── downloader/               # Worker pool, antrean FIFO, & atomic streaming
+│   │   └── catalog_test.go       # Catalog & storage path unit tests
+│   ├── downloader/               # Worker pool, FIFO queue, & atomic streaming
 │   │   ├── worker_pool.go
-│   │   ├── worker_pool_test.go   # Unit test antrean & pembatalan job
+│   │   ├── worker_pool_test.go   # Queue & job cancellation unit tests
 │   │   └── worker.go
-│   ├── handler/                  # REST API & SSE HTTP Handlers
+│   ├── handler/                  # REST API & SSE HTTP handlers
 │   │   ├── anime_handler.go
-│   │   └── download_handler.go
-│   └── model/                    # Definisi Go structs (katalog, status, jobs)
+│   │   ├── download_handler.go
+│   │   └── handler_test.go
+│   └── model/                    # Go structs (catalog, status, jobs, API DTOs)
 │       └── anime.go
 ├── web/                          # Frontend Single Page Application (Native ES Modules)
 │   ├── static/
 │   │   ├── css/
-│   │   │   └── style.css         # Desain responsif modern dark glassmorphism
+│   │   │   └── style.css         # Responsive modern dark glassmorphism stylesheet
+│   │   ├── images/
+│   │   │   └── poster-placeholder.svg # Minimal SVG poster fallback
 │   │   └── js/
-│   │       ├── components/       # Komponen UI: catalog, detail, tray, import-modal
-│   │       ├── services/         # Layanan: thumbnail (AniList GraphQL), toast
-│   │       ├── api.js            # Klien HTTP & EventSource SSE listener (ESM)
-│   │       ├── app.js            # Main entry point & SSE orchestrator (<160 baris)
+│   │       ├── components/       # UI components: catalog, detail, tray, import-modal
+│   │       ├── services/         # Services: thumbnail (AniList GraphQL), toast
+│   │       ├── api.js            # HTTP client & EventSource SSE listener (ESM)
+│   │       ├── app.js            # Main entry point & SSE orchestrator (<160 lines)
 │   │       ├── state.js          # Central in-memory state store
-│   │       └── utils.js          # Helper fungsi sanitasi & format string
-│   └── index.html                # Entry template HTML5 (<script type="module">)
-├── anime_list.example.json       # Template struktur katalog anime
-├── go.mod                        # Modul Go definition
-├── Makefile                      # Otomasi build, run, test, dan clean
-└── README.md                     # Dokumentasi utama proyek
+│   │       └── utils.js          # Sanitization & string formatting helpers
+│   └── index.html                # HTML5 entry template (<script type="module">)
+├── anime_list.example.json       # Example catalog template
+├── go.mod                        # Go module definition
+├── Makefile                      # Build, run, test, and clean automation
+└── README.md                     # Main project documentation
 ```
 
 ---
 
-## 📚 Dokumentasi Lanjutan
+## 📚 Further Documentation
 
-Untuk informasi teknis lebih mendalam, silakan baca dokumen di folder `docs/`:
+For in-depth technical references, see the files in the `docs/` directory:
 
-* 📖 **[Dokumentasi Kontrak API](docs/api_contract.md)**: Detail seluruh endpoint HTTP REST, payload JSON, dan struktur event SSE.
-* 🏗️ **[Arsitektur & Desain Sistem](docs/architecture.md)**: Penjelasan arsitektur monolith, concurrency model, mitigasi file korup, dan diagram Mermaid.
-* 💻 **[Panduan Pengembang & Roadmap](docs/development_guide.md)**: Variabel lingkungan (`PORT`, `STORAGE_PATH`), cara menambah episode baru, dan ide pengembangan masa depan.
+* 📖 **[API Contract Documentation](docs/api_contract.md)**: Full REST HTTP endpoint specifications, JSON payloads, and SSE stream schemas.
+* 🏗️ **[System Architecture & Design](docs/architecture.md)**: Monolith architecture overview, concurrency model, file integrity mitigation, and Mermaid diagrams.
+* 💻 **[Developer Guide & Roadmap](docs/development_guide.md)**: Environment variables (`PORT`, `STORAGE_PATH`), catalog update instructions, and post-MVP roadmap.
+* ⚖️ **[Architectural Decision Records (ADR)](docs/DECISIONS.md)**: Key design decisions, trade-offs, and motivations.
+* 🎨 **[Asset Attribution & Licensing](docs/ASSETS.md)**: Third-party fonts, icons, and placeholder asset records.
 
 ---
 
-## 🧪 Menjalankan Pengujian
+## 🧪 Running Tests
 
-Jalankan seluruh rangkaian unit test:
+Run the full unit test suite:
 ```bash
 make test
 ```
-Atau via `go test`:
+Or via Go directly:
 ```bash
 go test -v ./...
 ```
