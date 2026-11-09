@@ -188,3 +188,4 @@ export async function loadExistingDownloads() {
     console.warn('Failed to load initial downloads:', err);
   }
 }
+

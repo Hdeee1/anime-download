@@ -16,3 +16,4 @@
     - Modul dapat di-cache secara independen oleh HTTP cache browser.
   - **Negatif / Trade-off:**
     - Membutuhkan browser modern yang mendukung Native ES Modules (sudah didukung oleh 99%+ browser sejak 2018).
+

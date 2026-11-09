@@ -94,3 +94,4 @@ export const AnimeThumbnailService = {
 };
 
 export default AnimeThumbnailService;
+

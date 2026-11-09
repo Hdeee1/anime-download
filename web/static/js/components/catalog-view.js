@@ -161,3 +161,4 @@ export function showCatalogView() {
   state.currentAnime = null;
   loadCatalog();
 }
+

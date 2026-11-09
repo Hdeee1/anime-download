@@ -8,3 +8,4 @@ export const state = {
   activeJobs: new Map(), // jobId -> DownloadJob
   trayCollapsed: true,
 };
+
