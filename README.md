@@ -95,14 +95,18 @@ anime-download/
 │   │   └── download_handler.go
 │   └── model/                    # Definisi Go structs (katalog, status, jobs)
 │       └── anime.go
-├── web/                          # Frontend Single Page Application
+├── web/                          # Frontend Single Page Application (Native ES Modules)
 │   ├── static/
 │   │   ├── css/
 │   │   │   └── style.css         # Desain responsif modern dark glassmorphism
 │   │   └── js/
-│   │       ├── api.js            # Klien HTTP & EventSource SSE listener
-│   │       └── app.js            # Logika reaktif antarmuka, batch, & drawer
-│   └── index.html                # Entry template HTML5
+│   │       ├── components/       # Komponen UI: catalog, detail, tray, import-modal
+│   │       ├── services/         # Layanan: thumbnail (AniList GraphQL), toast
+│   │       ├── api.js            # Klien HTTP & EventSource SSE listener (ESM)
+│   │       ├── app.js            # Main entry point & SSE orchestrator (<160 baris)
+│   │       ├── state.js          # Central in-memory state store
+│   │       └── utils.js          # Helper fungsi sanitasi & format string
+│   └── index.html                # Entry template HTML5 (<script type="module">)
 ├── anime_list.example.json       # Template struktur katalog anime
 ├── go.mod                        # Modul Go definition
 ├── Makefile                      # Otomasi build, run, test, dan clean

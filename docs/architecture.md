@@ -8,10 +8,19 @@ Dokumen ini menjelaskan arsitektur teknis, desain komponen, dan keputusan rekaya
 
 ```mermaid
 graph TD
-    subgraph Client [Frontend Browser - Single Page App]
+    subgraph Client [Frontend Browser - Native ES Modules SPA]
         UI[Antarmuka Web: HTML5 / CSS3]
-        AppLogic[app.js - State & DOM Manager]
+        AppOrch[app.js - Orchestrator & SSE Dispatcher]
+        StateStore[state.js - Central State Store]
+        UIComp[components/ - Catalog, Detail, Tray, Modal]
+        Services[services/ - Thumbnail AniList, Toast]
         APIClient[api.js - REST & EventSource SSE]
+        
+        UI --> AppOrch
+        AppOrch --> UIComp
+        UIComp --> StateStore
+        UIComp --> Services
+        UIComp --> APIClient
     end
 
     subgraph GoServer [Go Monolith HTTP Server]
@@ -36,10 +45,6 @@ graph TD
     subgraph Remote [Penyedia Video Luar]
         CDN[Direct MP4 Storage Server]
     end
-
-    %% Client Interactions
-    UI --> AppLogic
-    AppLogic --> APIClient
     APIClient -->|REST Calls| Router
     Router -->|GET /api/anime| AnimeHdl
     Router -->|POST /api/downloads| DownloadHdl
@@ -92,9 +97,15 @@ Download Engine dirancang untuk keandalan jaringan lokal dan pencegahan ban dari
 - Endpoint SSE menggunakan `http.Flusher` untuk memastikan setiap event terkirim seketika tanpa tertahan buffer web server.
 
 ### 2.4 `web/` (Frontend Layer)
-- Dibangun dengan **Vanilla HTML, CSS, dan JavaScript murni** (tanpa dependensi node_modules / runtime bundling).
-- Menggunakan pola Single Page Application (SPA) ringan yang memisahkan view Katalog dan view Detail Season.
-- Memiliki laci status mengambang (*Download Tray*) yang selalu memantau antrean unduhan secara real-time.
+- Dibangun dengan **Vanilla HTML, CSS, dan JavaScript Native ES Modules (ESM)** tanpa dependensi `node_modules` atau bundler (Webpack/Vite).
+- Arsitektur berbasis modul terisolasi:
+  - **`app.js` (Orchestrator)**: Titik masuk aplikasi, inisialisasi modul komponen, setup listener SSE real-time, dan navigasi view.
+  - **`state.js`**: Reaktif in-memory central state store (`animeList`, `currentAnime`, `activeJobs`).
+  - **`api.js`**: Klien fetch REST dan pembungkus EventSource Server-Sent Events.
+  - **`services/`**: Layanan terisolasi seperti `thumbnail.js` (AniList GraphQL API + localStorage cache) dan `toast.js` (notifikasi UI).
+  - **`components/`**: Komponen modular independen (`catalog-view.js`, `detail-view.js`, `download-tray.js`, `import-modal.js`).
+  - **`utils.js`**: Fungsi pembantu murni (`escapeHtml`, `formatBytes`).
+- Memiliki laci status mengambang (*Download Tray*) yang memantau progres unduhan secara real-time via SSE.
 
 ---
 
