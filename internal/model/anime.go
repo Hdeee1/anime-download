@@ -90,8 +90,8 @@ type DownloadJob struct {
 }
 
 type APIResponse struct {
-	Success bool   `json:"success"`
-	Data    any    `json:"data"`
+	Success bool    `json:"success"`
+	Data    any     `json:"data"`
 	Error   *string `json:"error"`
 }
 

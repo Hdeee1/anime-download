@@ -1,5 +1,6 @@
-// API Client Module
-const API = {
+// API Client Module (Native ES Module)
+
+export const API = {
   async get(url) {
     const res = await fetch(url);
     if (!res.ok) {
@@ -97,5 +98,7 @@ const API = {
     });
 
     return eventSource;
-  }
+  },
 };
+
+export default API;
